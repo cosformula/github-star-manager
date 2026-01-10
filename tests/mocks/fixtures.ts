@@ -454,3 +454,188 @@ export function getMockListSuggestionResponse(): string {
     })),
   });
 }
+
+// ============================================
+// Edge Case Test Data
+// ============================================
+
+// Empty data scenarios
+export const emptyRepos: StarredRepo[] = [];
+export const emptyLists: StarList[] = [];
+
+// Repos with special characters in names
+export const specialCharRepos: StarredRepo[] = [
+  {
+    id: 100,
+    nodeId: "R_special1",
+    name: "project-name.js",
+    fullName: "user/project-name.js",
+    description: "A project with dots in name",
+    url: "https://github.com/user/project-name.js",
+    homepage: null,
+    language: "JavaScript",
+    topics: [],
+    stargazersCount: 100,
+    forksCount: 10,
+    updatedAt: "2024-01-10T00:00:00Z",
+    pushedAt: "2024-01-10T00:00:00Z",
+    archived: false,
+    disabled: false,
+  },
+  {
+    id: 101,
+    nodeId: "R_special2",
+    name: "my_project_v2",
+    fullName: "user-name/my_project_v2",
+    description: "Project with underscores & special chars: <script>alert('xss')</script>",
+    url: "https://github.com/user-name/my_project_v2",
+    homepage: null,
+    language: "Python",
+    topics: ["test", "special-chars"],
+    stargazersCount: 50,
+    forksCount: 5,
+    updatedAt: "2024-01-10T00:00:00Z",
+    pushedAt: "2024-01-10T00:00:00Z",
+    archived: false,
+    disabled: false,
+  },
+  {
+    id: 102,
+    nodeId: "R_special3",
+    name: "中文项目",
+    fullName: "用户/中文项目",
+    description: "A project with Chinese characters 中文描述",
+    url: "https://github.com/用户/中文项目",
+    homepage: null,
+    language: null,
+    topics: [],
+    stargazersCount: 10,
+    forksCount: 1,
+    updatedAt: "2024-01-10T00:00:00Z",
+    pushedAt: "2024-01-10T00:00:00Z",
+    archived: false,
+    disabled: false,
+  },
+  {
+    id: 103,
+    nodeId: "R_special4",
+    name: "emoji-project-🚀",
+    fullName: "dev/emoji-project-🚀",
+    description: "Project with emoji 🎉🔥",
+    url: "https://github.com/dev/emoji-project-🚀",
+    homepage: null,
+    language: "TypeScript",
+    topics: ["emoji", "fun"],
+    stargazersCount: 200,
+    forksCount: 20,
+    updatedAt: "2024-01-10T00:00:00Z",
+    pushedAt: "2024-01-10T00:00:00Z",
+    archived: false,
+    disabled: false,
+  },
+];
+
+// Repos with null/undefined fields
+export const nullFieldRepos: StarredRepo[] = [
+  {
+    id: 200,
+    nodeId: "R_null1",
+    name: "no-description",
+    fullName: "user/no-description",
+    description: null,
+    url: "https://github.com/user/no-description",
+    homepage: null,
+    language: null,
+    topics: [],
+    stargazersCount: 0,
+    forksCount: 0,
+    updatedAt: "",
+    pushedAt: "",
+    archived: false,
+    disabled: false,
+  },
+];
+
+// Large number of repos for pagination testing
+export function generateLargeRepoSet(count: number): StarredRepo[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: 1000 + i,
+    nodeId: `R_large${i}`,
+    name: `repo-${i}`,
+    fullName: `user/repo-${i}`,
+    description: `Test repository number ${i}`,
+    url: `https://github.com/user/repo-${i}`,
+    homepage: null,
+    language: ["JavaScript", "Python", "TypeScript", "Go", "Rust"][i % 5],
+    topics: [`topic${i % 10}`],
+    stargazersCount: Math.floor(Math.random() * 10000),
+    forksCount: Math.floor(Math.random() * 1000),
+    updatedAt: "2024-01-10T00:00:00Z",
+    pushedAt: "2024-01-10T00:00:00Z",
+    archived: i % 50 === 0, // Every 50th repo is archived
+    disabled: false,
+  }));
+}
+
+// All archived repos
+export const allArchivedRepos: StarredRepo[] = mockRepos.slice(0, 5).map((r) => ({
+  ...r,
+  archived: true,
+}));
+
+// All stale repos (very old)
+export const allStaleRepos: StarredRepo[] = mockRepos.slice(0, 5).map((r) => ({
+  ...r,
+  updatedAt: "2018-01-01T00:00:00Z",
+  pushedAt: "2018-01-01T00:00:00Z",
+}));
+
+// Disabled repos
+export const disabledRepos: StarredRepo[] = [
+  {
+    ...mockRepos[0],
+    id: 300,
+    nodeId: "R_disabled1",
+    disabled: true,
+  },
+];
+
+// Mock scopes without list permission
+export const mockScopesNoListPermission = {
+  scopes: ["repo"],
+  canCreateLists: false,
+};
+
+// Mock malformed AI responses
+export const malformedAIResponses = {
+  emptyResponse: "",
+  invalidJson: "{ invalid json }",
+  missingFields: JSON.stringify({ data: "wrong format" }),
+  nullContent: JSON.stringify({ categorization: null }),
+  emptyArray: JSON.stringify({ categorization: [] }),
+  wrongTypes: JSON.stringify({ categorization: "not an array" }),
+};
+
+// Mock backup data
+export const mockBackupData = {
+  version: 1,
+  timestamp: "2024-01-10T00:00:00Z",
+  user: "testuser",
+  stars: mockRepos.slice(0, 5).map((r) => r.fullName),
+  lists: [
+    {
+      name: "Test List",
+      description: "A test list",
+      repos: ["facebook/react", "vuejs/vue"],
+    },
+  ],
+};
+
+// Corrupted backup data
+export const corruptedBackupData = {
+  version: 999, // Unknown version
+  timestamp: "invalid-date",
+  user: null,
+  stars: "not an array",
+  lists: null,
+};

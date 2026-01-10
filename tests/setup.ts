@@ -82,7 +82,27 @@ export {
 } from "./mocks/prompts";
 
 // Export mock data for assertions
-export { mockRepos, mockLists, mockListContents, mockUser, mockScopes, mockSuggestedLists } from "./mocks/fixtures";
+export {
+  mockRepos,
+  mockLists,
+  mockListContents,
+  mockUser,
+  mockScopes,
+  mockSuggestedLists,
+  // Edge case data
+  emptyRepos,
+  emptyLists,
+  specialCharRepos,
+  nullFieldRepos,
+  generateLargeRepoSet,
+  allArchivedRepos,
+  allStaleRepos,
+  disabledRepos,
+  mockScopesNoListPermission,
+  malformedAIResponses,
+  mockBackupData,
+  corruptedBackupData,
+} from "./mocks/fixtures";
 
 // Suppress console output during tests (optional)
 export function suppressConsole() {

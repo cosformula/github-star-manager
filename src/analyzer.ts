@@ -214,8 +214,7 @@ Return JSON with ONLY repos to unstar:
 
 If none should be unstarred: { "unstar": [] }`;
 
-    const response = await this.callLLM(prompt, this.models.analysis);
-    const parsed = this.parseJSON(response);
+    const parsed = await this.callLLMForJSON(prompt, this.models.analysis);
     return parsed?.unstar || [];
   }
 
@@ -264,8 +263,7 @@ Return JSON only:
   ]
 }`;
 
-    const response = await this.callLLM(prompt, this.models.categorization);
-    const parsed = this.parseJSON(response);
+    const parsed = await this.callLLMForJSON(prompt, this.models.categorization);
 
     if (!parsed?.lists) return [];
 
@@ -382,15 +380,13 @@ Return JSON array:
   { "repo": "owner/name", "action": "unstar" }
 ]`;
 
-    const response = await this.callLLM(prompt, this.models.analysis);
-    const parsed = this.parseJSON(response);
+    const parsed = await this.callLLMForJSON(prompt, this.models.analysis);
 
     // Support both formats: { repos: [...] } or direct [...]
     const repoResults = Array.isArray(parsed) ? parsed : parsed?.repos;
 
     if (!repoResults || !Array.isArray(repoResults)) {
-      console.error("   ⚠️ Parse error, marking batch as keep");
-      console.error("   Raw response:", response.slice(0, 500));
+      console.error("   ⚠️ Parse error after retries, marking batch as keep");
       return repos.map((r) => ({ repo: r.fullName, action: "keep" as const, reason: "Parse error" }));
     }
 
@@ -489,7 +485,18 @@ Return JSON array:
     return Object.fromEntries(Object.entries(counts).sort(([, a], [, b]) => b - a));
   }
 
-  private async callLLM(prompt: string, model: string): Promise<string> {
+  private async callLLM(prompt: string, model: string, jsonMode = false): Promise<string> {
+    const body: Record<string, unknown> = {
+      model,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 4096,
+    };
+
+    // Enable JSON mode if supported
+    if (jsonMode) {
+      body.response_format = { type: "json_object" };
+    }
+
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
@@ -497,11 +504,7 @@ Return JSON array:
         "Content-Type": "application/json",
         "HTTP-Referer": "https://github.com/github-star-manager",
       },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 4096,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -526,6 +529,32 @@ Return JSON array:
     return data.choices?.[0]?.message?.content || "";
   }
 
+  /**
+   * Call LLM and parse JSON response with retry logic
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async callLLMForJSON(prompt: string, model: string, maxRetries = 3): Promise<any> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await this.callLLM(prompt, model, true);
+        const parsed = this.parseJSON(response);
+        if (parsed !== null) {
+          return parsed;
+        }
+        // Parse failed, will retry
+        if (attempt < maxRetries) {
+          console.error(`   ⚠️ JSON parse failed, retrying (${attempt}/${maxRetries})...`);
+        }
+      } catch (error) {
+        if (attempt >= maxRetries) {
+          throw error;
+        }
+        console.error(`   ⚠️ LLM call failed, retrying (${attempt}/${maxRetries})...`);
+      }
+    }
+    return null;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private parseJSON(text: string): any {
     try {
@@ -537,8 +566,8 @@ Return JSON array:
       // Then try matching object format {...}
       const objectMatch = text.match(/\{[\s\S]*\}/);
       return objectMatch ? JSON.parse(objectMatch[0]) : null;
-    } catch (error) {
-      console.error("Failed to parse JSON:", error);
+    } catch {
+      // Return null to trigger retry
       return null;
     }
   }
