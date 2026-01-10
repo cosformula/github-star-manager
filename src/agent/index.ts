@@ -319,8 +319,8 @@ export class StarManagerAgent {
       const spinnerStars = new Spinner("获取 Stars");
       spinnerStars.start();
       const maxStars = this.debugMode ? 100 : undefined;
-      this.stars = await this.github.getStarredRepos((count) => {
-        spinnerStars.update(`获取 Stars (${count}${maxStars ? `/${maxStars}` : ""})`);
+      this.stars = await this.github.getStarredRepos((count, total) => {
+        spinnerStars.update(`获取 Stars (${count}/${total})`);
       }, maxStars);
       spinnerStars.stop(`Stars: ${this.stars.length} repos${this.debugMode ? " (debug limit)" : ""}`);
 

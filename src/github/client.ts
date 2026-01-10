@@ -10,7 +10,7 @@ export class GitHubClient {
     this.octokit = new Octokit({ auth: token });
   }
 
-  async getStarredRepos(onProgress?: (count: number) => void, maxCount?: number): Promise<StarredRepo[]> {
+  async getStarredRepos(onProgress?: (count: number, total: number) => void, maxCount?: number): Promise<StarredRepo[]> {
     const perPage = 100;
 
     // Step 1: 获取第一页，同时解析 Link header 得到总页数
@@ -27,10 +27,14 @@ export class GitHubClient {
     const linkHeader = firstResponse.headers.link || "";
     const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
     const totalPages = lastPageMatch ? parseInt(lastPageMatch[1], 10) : 1;
+    const estimatedTotal = maxCount ? Math.min(totalPages * perPage, maxCount) : totalPages * perPage;
 
     // Debug mode: 限制页数
     const maxPages = maxCount ? Math.ceil(maxCount / perPage) : totalPages;
     const pagesToFetch = Math.min(totalPages, maxPages);
+
+    // 立即报告第一页的进度
+    onProgress?.(firstResponse.data.length, estimatedTotal);
 
     // Step 2: 并行获取剩余页面 (并发数限制为 5)
     const CONCURRENCY = 5;
@@ -52,7 +56,7 @@ export class GitHubClient {
       for (const res of results) {
         allResponses.push(res.data);
       }
-      onProgress?.(allResponses.flat().length);
+      onProgress?.(allResponses.flat().length, estimatedTotal);
     }
 
     // Step 3: 转换数据
