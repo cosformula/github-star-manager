@@ -1,127 +1,127 @@
 # gh-star
 
-English | [中文](./README_zh.md)
+[English](./README.md) | 中文
 
-An AI-powered CLI agent for managing your GitHub Stars.
+AI 驱动的 GitHub Star 命令行管理工具。
 
-## Overview
+## 概述
 
-gh-star is a **command-line star management agent** that leverages LLM to semantically understand your starred repositories. It analyzes the purpose and context of each repo, then organizes them into meaningful categories.
+gh-star 是一个**命令行 Star 管理 Agent**，利用 LLM 对你的 starred 仓库进行语义分析，理解每个仓库的用途和上下文，自动整理成有意义的分类。
 
-## Features
+## 功能特性
 
-- 🔍 **Smart Analysis** - Analyzes language, topics, and activity of all starred repos
-- 📂 **Semantic Categorization** - Creates meaningful Lists using LLM understanding (not keyword matching)
-- ⭐ **Conservative Unstar** - Only suggests removing truly deprecated/broken repos
-- 💾 **Auto Backup** - Automatic backup before operations with one-click restore
-- 🤖 **Cost Optimized** - Uses different AI models for different tasks
-- 🔄 **Dry Run** - Preview mode to see changes without executing
+- 🔍 **智能分析** - 分析所有 starred repos 的语言、topics、活跃度
+- 📂 **语义分类** - 基于 LLM 理解创建有意义的 Lists 分类（非关键词匹配）
+- ⭐ **保守 Unstar** - 只建议移除确实废弃/损坏的仓库
+- 💾 **自动备份** - 操作前自动备份，支持一键恢复
+- 🤖 **成本优化** - 不同任务使用不同 AI 模型
+- 🔄 **Dry Run** - 支持测试模式，预览操作不实际执行
 
-## Tech Stack
+## 技术栈
 
 - **Runtime**: [Bun](https://bun.sh/) (TypeScript)
 - **GitHub API**: Octokit REST + GraphQL (Lists API)
 - **AI**: OpenRouter API (Claude Sonnet / Haiku)
 
-## Installation
+## 安装
 
 ```bash
 bun install
 ```
 
-## Usage
+## 使用
 
 ```bash
 bun run index.ts
 ```
 
-### Token Configuration
+### 配置 Tokens
 
 ```bash
-# Option 1: Environment variables (recommended)
+# 方式一：环境变量（推荐）
 cp .env.example .env
-# Edit .env and fill in your tokens
+# 编辑 .env 填入 tokens
 bun run index.ts
 
-# Option 2: Runtime input
+# 方式二：运行时输入
 bun run index.ts
-# Enter tokens when prompted
+# 按提示输入 tokens
 ```
 
-### Run Modes
+### 运行模式
 
-Select from these modes at startup:
+启动后可选择以下模式：
 
-| Mode | Description |
-|------|-------------|
-| 📊 Analyze and organize | Full analysis and organization workflow |
-| 🔄 Restore from backup | Restore from a previous backup |
-| 🐛 Debug mode | Debug mode (processes only 2 batches) |
-| 👁️ Dry run | Preview mode (no actual API operations) |
-| 🐛👁️ Debug + Dry run | Combined debug and preview mode |
+| 模式 | 说明 |
+|------|------|
+| 📊 Analyze and organize | 完整分析和整理流程 |
+| 🔄 Restore from backup | 从备份恢复 |
+| 🐛 Debug mode | 调试模式（仅处理 2 批数据） |
+| 👁️ Dry run | 测试模式（不实际执行 API 操作） |
+| 🐛👁️ Debug + Dry run | 调试 + 测试组合 |
 
-## Architecture
+## 架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        index.ts                             │
 │                           ↓                                 │
 │                   StarManagerAgent                          │
-│                   (Main Orchestrator)                       │
+│                    (主调度器)                                │
 │         ┌────────────┼────────────┐                         │
 │         ↓            ↓            ↓                         │
 │   GitHubClient  RepoAnalyzer  BackupManager                 │
-│   (API Client)  (AI Analysis) (Backup/Restore)              │
+│   (API 交互)    (AI 分析)     (备份恢复)                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Workflow
+## 工作流程
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  1. Select Mode                                             │
+│  1. 选择模式                                                 │
 │     • 📊 Analyze and organize stars                         │
 │     • 🔄 Restore from backup                                │
 │     • 🐛 Debug mode / 👁️ Dry run                             │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  2. Enter Tokens (or read from env)                         │
+│  2. 输入 Tokens（或从环境变量读取）                           │
 │     • GITHUB_TOKEN                                          │
 │     • OPENROUTER_API_KEY                                    │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  3. Fetch Data (with live progress)                         │
-│     • Verify user identity and token permissions            │
-│     • Fetch all starred repos: Stars: 100... 200... 1574   │
-│     • Fetch existing Lists                                  │
+│  3. 获取数据（显示实时进度）                                  │
+│     • 验证用户身份和 Token 权限                              │
+│     • 获取所有 starred repos: Stars: 100... 200... 1574    │
+│     • 获取现有 Lists                                        │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  4. Auto Backup                                             │
-│     • Saves to ~/.github-stars-backup/                      │
-│     • Prompts to continue if backup fails                   │
+│  4. 自动备份                                                 │
+│     • 保存到 ~/.github-stars-backup/                        │
+│     • 备份失败会询问是否继续                                  │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  5. Review Existing Lists (if any)                          │
-│     • 📋 View list contents                                 │
-│     • ✨ Keep lists, suggest new                            │
-│     • 🔄 Reorganize - consider merging/restructuring        │
-│     • ⏭️  Skip - don't modify lists, only unstar             │
+│  5. 查看现有 Lists（如果有）                                  │
+│     • 📋 View list contents - 查看列表内容                   │
+│     • ✨ Keep lists, suggest new - 保留现有，建议新分类       │
+│     • 🔄 Reorganize - 考虑合并/重组                          │
+│     • ⏭️  Skip - 不修改 lists，只执行 unstar                  │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  6. AI Analysis (with spinner animation)                    │
-│     ⠋ AI generating category suggestions... (claude-sonnet) │
-│     ✓ Categories complete (6 lists)                         │
-│     ⠹ AI classifying (100/1574)... (claude-3-5-haiku)       │
-│     ✓ Classification complete (1574 suggestions)            │
+│  6. AI 分析（显示 spinner 动画）                              │
+│     ⠋ AI 正在生成分类建议...  (claude-sonnet-4)             │
+│     ✓ 分类建议完成 (6 个列表)                                │
+│     ⠹ AI 正在分类 (100/1574)... (claude-3-5-haiku)          │
+│     ✓ 分类完成 (1574 个建议)                                 │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  7. Display Analysis Summary                                │
+│  7. 显示分析摘要                                             │
 │     ══════════════════════════════════════════════════════  │
 │     📊 Analysis Summary                                     │
 │     ══════════════════════════════════════════════════════  │
@@ -139,21 +139,21 @@ Select from these modes at startup:
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  8. Review (can loop multiple times)                        │
-│     • 📋 Review suggested lists (6)                         │
-│     • 🗑️  Review repos to unstar (5)                         │
-│     • 📁 Review categorization (1200)                       │
-│     • ✅ Done reviewing, generate plan                      │
-│     • ❌ Exit without changes                               │
+│  8. Review（可循环多次）                                      │
+│     • 📋 Review suggested lists (6) - 选择要创建的列表        │
+│     • 🗑️  Review repos to unstar (5) - 审核 unstar 建议      │
+│     • 📁 Review categorization (1200) - 审核分类             │
+│     • ✅ Done reviewing, generate plan - 生成执行计划        │
+│     • ❌ Exit without changes - 退出                         │
 │                                                             │
-│     Each review option supports:                            │
-│     • Accept all                                            │
-│     • Skip all                                              │
-│     • Review one by one / by list                           │
+│     每个 review 选项支持:                                    │
+│     • Accept all - 接受全部                                  │
+│     • Skip all - 跳过全部                                    │
+│     • Review one by one / by list - 逐个审核                 │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  9. Display Execution Plan                                  │
+│  9. 显示执行计划                                             │
 │     ══════════════════════════════════════════════════════  │
 │     📋 Execution Plan                                       │
 │     ══════════════════════════════════════════════════════  │
@@ -170,178 +170,178 @@ Select from these modes at startup:
 │     ══════════════════════════════════════════════════════  │
 │     📄 Full plan: /tmp/plan-xxx.json                        │
 │                                                             │
-│     Options:                                                │
-│     • ✅ Execute plan                                       │
-│     • ➖ Remove some actions                                │
-│     • 🔄 Regenerate plan                                    │
-│     • ❌ Cancel                                             │
+│     选项:                                                    │
+│     • ✅ Execute plan - 执行                                 │
+│     • ➖ Remove some actions - 移除某类操作                   │
+│     • 🔄 Regenerate plan - 重新生成                          │
+│     • ❌ Cancel - 取消                                       │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  10. Execute (with live progress)                           │
+│  10. 执行（显示实时进度）                                     │
 │                                                             │
 │     📁 Creating 6 lists...                                  │
 │        "AI/ML Tools"... ✓                                   │
 │        "Web Development"... ✓                               │
 │                                                             │
 │     ➕ Adding repos to lists (1200)...                      │
-│        Progress: 500/1200                                   │
-│        Result: 498 success, 2 skipped, 0 failed             │
+│        进度: 500/1200                                       │
+│        结果: 498 成功, 2 跳过, 0 失败                         │
 │                                                             │
 │     ⭐ Unstarring 5 repos...                                │
-│        Progress: 5/5                                        │
-│        Result: 5 success, 0 failed                          │
+│        进度: 5/5                                            │
+│        结果: 5 成功, 0 失败                                  │
 │                                                             │
 │     ✅ Done!                                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## AI Analysis Pipeline
+## AI 分析流程
 
-Analysis is divided into two phases:
+分析分为两个阶段：
 
-### Phase 1: Generate Category Suggestions
-
-```
-All repos → Stratified sampling (60) → Claude Sonnet → 5-8 category suggestions
-```
-
-- **Stratified Sampling**: Samples by language proportion to ensure diversity
-- **Semantic Understanding**: Analyzes description, topics, and purpose for deep context
-- **Output**: Generates meaningful category names and descriptions
-
-### Phase 2: Batch Classification
+### 阶段一：生成分类建议
 
 ```
-All repos → 30 per batch → Claude Haiku → Categorize/Unstar/Keep decision
+所有 repos → 分层抽样(60个) → Claude Sonnet → 5-8 个分类建议
 ```
 
-- **Batch Processing**: 30 repos per batch to control API calls
-- **Three Decisions**: Assign to a List / Suggest unstar / Keep unchanged
-- **Cost Optimization**: Uses cheaper, faster Haiku model
+- **分层抽样**：按语言比例抽取，确保多样性
+- **语义理解**：深度分析 description、topics、用途
+- **输出**：生成有意义的分类名称和描述
 
-### Model Configuration
+### 阶段二：批量分类
 
-| Task | Model | Rationale |
-|------|-------|-----------|
-| Category Suggestions | `claude-sonnet-4` | Requires creativity and understanding |
-| Repo Classification/Unstar | `claude-3-5-haiku` | Fast and cheap for simple decisions |
+```
+所有 repos → 每批30个 → Claude Haiku → 分类/unstar/保留 决策
+```
 
-Uses OpenRouter API. Default models can be changed in `src/analyzer.ts`.
+- **批量处理**：30 repos/批，控制 API 调用
+- **三种决策**：归入某个 List / 建议 unstar / 保持不变
+- **成本优化**：使用便宜快速的 Haiku 模型
 
-## GitHub Token Permissions
+### 模型配置
 
-### Option 1: Fine-grained Personal Access Token
+| 任务 | 模型 | 说明 |
+|------|------|------|
+| 分类建议 | `claude-sonnet-4` | 需要创意和理解能力 |
+| Repo 分类/Unstar 分析 | `claude-3-5-haiku` | 快速便宜，简单判断 |
 
-1. Go to https://github.com/settings/tokens?type=beta
-2. Click "Generate new token"
-3. Configure:
+通过 OpenRouter API 调用，可在 `src/analyzer.ts` 中修改默认模型。
+
+## GitHub Token 权限设置
+
+### 方式一：Fine-grained Personal Access Token
+
+1. 前往 https://github.com/settings/tokens?type=beta
+2. 点击 "Generate new token"
+3. 设置：
    - **Token name**: `github-stars-manager`
-   - **Expiration**: Set as needed
+   - **Expiration**: 按需设置
    - **Repository access**: `Public Repositories (read-only)`
    - **Permissions**:
 
-| Permission | Access | Purpose |
-|------------|--------|---------|
-| **Starring** | Read and write | Read/add/remove stars |
-| **Metadata** | Read-only | Read repo basic info (auto-included) |
+| Permission | Access | 用途 |
+|------------|--------|------|
+| **Starring** | Read and write | 读取/添加/移除 stars |
+| **Metadata** | Read-only | 读取仓库基本信息（自动包含） |
 
-> ⚠️ **Note**: GitHub Lists API currently only supports Classic Tokens. Use a Classic Token if you need Lists functionality.
+> ⚠️ **注意**: GitHub Lists API 目前只支持 Classic Token。如果需要使用 Lists 分类功能，请使用 Classic Token。
 
-### Option 2: Classic Personal Access Token (Recommended)
+### 方式二：Classic Personal Access Token（推荐）
 
-1. Go to https://github.com/settings/tokens
-2. Click "Generate new token (classic)"
-3. Select scopes:
+1. 前往 https://github.com/settings/tokens
+2. 点击 "Generate new token (classic)"
+3. 勾选权限：
 
-| Scope | Purpose |
-|-------|---------|
-| `public_repo` | Read public repo info |
-| `read:user` | Read user info |
-| `user` | **Create/manage Lists (required)** |
+| Scope | 用途 |
+|-------|------|
+| `public_repo` | 读取公共仓库信息 |
+| `read:user` | 读取用户信息 |
+| `user` | **创建/管理 Lists（必需）** |
 
 ## OpenRouter API Key
 
-1. Go to https://openrouter.ai/keys
-2. Create an API Key
-3. Ensure your account has credits
+1. 前往 https://openrouter.ai/keys
+2. 创建 API Key
+3. 确保账户有余额
 
-## Backup & Restore
+## 备份与恢复
 
-Backups are automatically saved to `~/.github-stars-backup/`.
+备份自动保存到 `~/.github-stars-backup/` 目录。
 
-Before each execution, a backup is created containing:
-- All starred repos
-- All Lists and their contents
+每次执行前会自动创建备份，包含：
+- 所有 starred repos
+- 所有 Lists 及其内容
 
-To restore, select "🔄 Restore from backup" to:
-- Re-star deleted repos
-- Recreate deleted Lists
+恢复时选择 "🔄 Restore from backup"，可以：
+- 重新 star 被删除的 repos
+- 重建被删除的 Lists
 
-## Analysis Strategy
+## 分析策略
 
-### Category Suggestions
-- **Stratified Sampling**: Samples 60 repos proportionally by language
-- **LLM Semantic Classification**: Understands repo purpose and context
-- **Considers Existing Lists**: Can keep, reorganize, or create new categories
+### 分类建议
+- **分层抽样**：按语言比例从所有 repos 中抽取 60 个样本
+- **LLM 语义分类**：理解 repo 的用途和上下文
+- **考虑现有 Lists**：可选择保留、重组或创建新分类
 
-### Unstar Suggestions (Conservative)
-Only suggests unstar for:
-- ❌ Deprecated with recommended alternatives
+### Unstar 建议（保守策略）
+只建议 unstar 以下情况：
+- ❌ Deprecated 且有推荐替代品
 - ❌ Joke/meme repos
-- ❌ Explicitly marked broken/abandoned
-- ❌ Outdated personal forks
+- ❌ 明确标注 broken/abandoned
+- ❌ 过时的个人 fork
 
-**Will NOT** suggest unstar for:
-- ✅ Archived but still useful repos
-- ✅ Old but classic stable libraries
-- ✅ Learning resources
-- ✅ High star count (10k+) repos
+**不会**建议 unstar：
+- ✅ Archived 但仍有用的 repos
+- ✅ 老旧但经典稳定的库
+- ✅ 学习资源
+- ✅ 高 star 数 (10k+) 的 repos
 
-## FAQ
+## 常见问题
 
-### Lists Feature Unavailable
+### Lists 功能不可用
 
-**Symptom**: "Cannot create lists" or Lists operations fail
+**症状**: 提示 "Cannot create lists" 或 Lists 相关操作失败
 
-**Cause**: GitHub Lists API currently only supports Classic Token with `user` scope
+**原因**: GitHub Lists API 目前只支持 Classic Token 的 `user` scope
 
-**Solution**: Use Classic Token with `user` permission enabled
+**解决**: 使用 Classic Token 并确保勾选 `user` 权限
 
-### API Call Failed
+### API 调用失败
 
-**Symptom**: OpenRouter API returns errors
+**症状**: OpenRouter API 返回错误
 
-**Possible Causes**:
-- Invalid or expired API Key
-- Insufficient account balance
-- Model temporarily unavailable
+**可能原因**:
+- API Key 无效或过期
+- 账户余额不足
+- 模型暂时不可用
 
-**Solution**: Check OpenRouter account status and balance
+**解决**: 检查 OpenRouter 账户状态和余额
 
-### Backup Restore Failed
+### 备份恢复失败
 
-**Symptom**: Cannot restore some repos
+**症状**: 无法恢复某些 repos
 
-**Possible Causes**:
-- Original repo was deleted
-- Repo was renamed or transferred
-- Network issues
+**可能原因**:
+- 原 repo 已被删除
+- repo 改名或转移
+- 网络问题
 
-**Solution**: Check error logs and manually handle failed repos
+**解决**: 查看错误日志，手动处理失败的 repos
 
-## Project Structure
+## 项目结构
 
 ```
 github-star-manager/
-├── index.ts              # Entry point
+├── index.ts              # 入口文件
 ├── src/
-│   ├── agent/index.ts    # Main orchestrator StarManagerAgent
-│   ├── github/client.ts  # GitHub API wrapper
-│   ├── analyzer.ts       # AI analysis engine
-│   ├── backup.ts         # Backup/restore manager
-│   ├── spinner.ts        # CLI progress animation
-│   └── types/index.ts    # TypeScript type definitions
+│   ├── agent/index.ts    # 主调度器 StarManagerAgent
+│   ├── github/client.ts  # GitHub API 封装
+│   ├── analyzer.ts       # AI 分析引擎
+│   ├── backup.ts         # 备份恢复管理
+│   ├── spinner.ts        # CLI 进度动画
+│   └── types/index.ts    # TypeScript 类型定义
 ├── package.json
 ├── tsconfig.json
 └── .env.example

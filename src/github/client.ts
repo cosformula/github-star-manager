@@ -10,7 +10,7 @@ export class GitHubClient {
     this.octokit = new Octokit({ auth: token });
   }
 
-  async getStarredRepos(): Promise<StarredRepo[]> {
+  async getStarredRepos(onProgress?: (count: number) => void, maxCount?: number): Promise<StarredRepo[]> {
     const repos: StarredRepo[] = [];
     let page = 1;
     const perPage = 100;
@@ -44,8 +44,15 @@ export class GitHubClient {
           archived: repoData.archived,
           disabled: repoData.disabled,
         });
+
+        // Debug mode: 限制获取数量
+        if (maxCount && repos.length >= maxCount) {
+          onProgress?.(repos.length);
+          return repos;
+        }
       }
 
+      onProgress?.(repos.length);
       page++;
     }
 
@@ -63,6 +70,16 @@ export class GitHubClient {
   async getAuthenticatedUser(): Promise<{ login: string; id: string }> {
     const { data } = await this.octokit.users.getAuthenticated();
     return { login: data.login, id: data.node_id };
+  }
+
+  async checkScopes(): Promise<{ scopes: string[]; canCreateLists: boolean }> {
+    const response = await fetch("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${this.token}` },
+    });
+    const scopeHeader = response.headers.get("x-oauth-scopes") || "";
+    const scopes = scopeHeader.split(",").map((s) => s.trim()).filter(Boolean);
+    const canCreateLists = scopes.includes("user") || scopes.includes("write:user");
+    return { scopes, canCreateLists };
   }
 
   // GraphQL helper for Lists API
@@ -254,26 +271,67 @@ export class GitHubClient {
 
   async addRepoToList(listId: string, repoId: string): Promise<void> {
     const query = `
-      mutation($listId: ID!, $repositoryId: ID!) {
-        addUserListItems(input: { listId: $listId, itemIds: [$repositoryId] }) {
-          clientMutationId
+      mutation($itemId: ID!, $listIds: [ID!]!) {
+        updateUserListsForItem(input: { itemId: $itemId, listIds: $listIds }) {
+          item {
+            ... on Repository {
+              id
+            }
+          }
         }
       }
     `;
 
-    await this.graphql(query, { listId, repositoryId: repoId });
+    // 获取当前 repo 所属的 lists，然后添加新的 listId
+    const currentLists = await this.getRepoLists(repoId);
+    const newListIds = [...new Set([...currentLists, listId])];
+
+    await this.graphql(query, { itemId: repoId, listIds: newListIds });
+  }
+
+  async getRepoLists(repoId: string): Promise<string[]> {
+    const query = `
+      query($id: ID!) {
+        node(id: $id) {
+          ... on Repository {
+            viewerUserListsConnection(first: 100) {
+              nodes {
+                id
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const data = await this.graphql<{
+        node: { viewerUserListsConnection?: { nodes: { id: string }[] } };
+      }>(query, { id: repoId });
+      return data.node.viewerUserListsConnection?.nodes.map((n) => n.id) || [];
+    } catch {
+      return [];
+    }
   }
 
   async removeRepoFromList(listId: string, repoId: string): Promise<void> {
     const query = `
-      mutation($listId: ID!, $repositoryId: ID!) {
-        removeUserListItems(input: { listId: $listId, itemIds: [$repositoryId] }) {
-          clientMutationId
+      mutation($itemId: ID!, $listIds: [ID!]!) {
+        updateUserListsForItem(input: { itemId: $itemId, listIds: $listIds }) {
+          item {
+            ... on Repository {
+              id
+            }
+          }
         }
       }
     `;
 
-    await this.graphql(query, { listId, repositoryId: repoId });
+    // 获取当前 repo 所属的 lists，然后移除 listId
+    const currentLists = await this.getRepoLists(repoId);
+    const newListIds = currentLists.filter((id) => id !== listId);
+
+    await this.graphql(query, { itemId: repoId, listIds: newListIds });
   }
 
   async getRepoByName(fullName: string): Promise<StarredRepo | null> {
