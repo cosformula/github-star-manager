@@ -3,7 +3,7 @@ import { GitHubClient } from "../github/client";
 import { RepoAnalyzer } from "../analyzer";
 import { BackupManager } from "../backup";
 import { Spinner } from "../spinner";
-import type { StarredRepo, StarList, ListSuggestion, RepoSuggestion, PlanAction, ExecutionPlan } from "../types";
+import type { StarredRepo, StarList, ListSuggestion, RepoSuggestion, PlanAction, ExecutionPlan, UnstarOptions, UnstarCriteriaId } from "../types";
 
 export class StarManagerAgent {
   private github!: GitHubClient;
@@ -167,7 +167,14 @@ export class StarManagerAgent {
    * Run the unstar flow
    */
   private async runUnstarFlow(): Promise<void> {
-    await this.unstarAnalysisStage();
+    // 让用户选择清理条件
+    const unstarOptions = await this.selectUnstarCriteria();
+    if (!unstarOptions) {
+      console.log("\n⏭️  Skipped cleanup.\n");
+      return;
+    }
+
+    await this.unstarAnalysisStage(unstarOptions);
 
     if (this.repoSuggestions.length > 0) {
       await this.reviewUnstar();
@@ -750,13 +757,115 @@ export class StarManagerAgent {
   }
 
   /**
+   * Let user select unstar criteria
+   * Returns null if user cancels
+   */
+  private async selectUnstarCriteria(): Promise<UnstarOptions | null> {
+    console.log("\n" + "═".repeat(50));
+    console.log("🧹 Cleanup Criteria Selection");
+    console.log("═".repeat(50));
+
+    // 预设条件选项
+    const criteriaChoices: Array<{ title: string; value: UnstarCriteriaId; selected: boolean; description: string }> = [
+      { title: "📦 Archived repos", value: "archived", selected: false, description: "Repos marked as archived by owner" },
+      { title: "⏰ Stale repos (2+ years)", value: "stale", selected: false, description: "Not updated in 2+ years" },
+      { title: "⭐ Low stars (< 100)", value: "low_stars", selected: false, description: "Repos with few stars" },
+      { title: "🚫 Deprecated", value: "deprecated", selected: true, description: "Has replacement or marked deprecated" },
+      { title: "🍴 Personal forks", value: "personal_fork", selected: true, description: "Forks of other repos" },
+      { title: "🎭 Joke/meme repos", value: "joke_meme", selected: true, description: "Not meant for serious use" },
+    ];
+
+    const { selectedCriteria } = await prompts({
+      type: "multiselect",
+      name: "selectedCriteria",
+      message: "Select cleanup criteria (space to toggle):",
+      choices: criteriaChoices,
+      hint: "- Space to select. Enter to confirm",
+      instructions: false,
+    });
+
+    if (!selectedCriteria || selectedCriteria.length === 0) {
+      return null;
+    }
+
+    const options: UnstarOptions = {
+      criteria: selectedCriteria as UnstarCriteriaId[],
+    };
+
+    // 如果选择了 stale，询问年数
+    if (options.criteria.includes("stale")) {
+      const { years } = await prompts({
+        type: "number",
+        name: "years",
+        message: "Stale threshold (years without updates):",
+        initial: 2,
+        min: 1,
+        max: 10,
+      });
+      options.staleYears = years || 2;
+    }
+
+    // 如果选择了 low_stars，询问阈值
+    if (options.criteria.includes("low_stars")) {
+      const { threshold } = await prompts({
+        type: "number",
+        name: "threshold",
+        message: "Low stars threshold:",
+        initial: 100,
+        min: 1,
+        max: 10000,
+      });
+      options.lowStarsThreshold = threshold || 100;
+    }
+
+    // 询问是否有自定义条件
+    const { wantCustom } = await prompts({
+      type: "confirm",
+      name: "wantCustom",
+      message: "Add custom criteria?",
+      initial: false,
+    });
+
+    if (wantCustom) {
+      const { customCriteria } = await prompts({
+        type: "text",
+        name: "customCriteria",
+        message: "Enter custom criteria (e.g., 'repos related to deprecated frameworks'):",
+      });
+      if (customCriteria) {
+        options.customCriteria = customCriteria;
+      }
+    }
+
+    console.log("═".repeat(50));
+    return options;
+  }
+
+  /**
    * Unstar Analysis Stage (independent)
    * - AI analyzes repos to find candidates for unstarring
    */
-  private async unstarAnalysisStage(): Promise<void> {
+  private async unstarAnalysisStage(options: UnstarOptions): Promise<void> {
     console.log("\n" + "═".repeat(50));
     console.log("🧹 Cleanup Analysis");
     console.log("═".repeat(50));
+
+    // 显示用户选择的条件
+    console.log("\n📋 Selected criteria:");
+    const criteriaLabels: Record<UnstarCriteriaId, string> = {
+      archived: "📦 Archived repos",
+      stale: `⏰ Stale (${options.staleYears ?? 2}+ years)`,
+      low_stars: `⭐ Low stars (< ${options.lowStarsThreshold ?? 100})`,
+      deprecated: "🚫 Deprecated",
+      personal_fork: "🍴 Personal forks",
+      joke_meme: "🎭 Joke/meme repos",
+    };
+    for (const id of options.criteria) {
+      console.log(`   ${criteriaLabels[id]}`);
+    }
+    if (options.customCriteria) {
+      console.log(`   📝 Custom: ${options.customCriteria}`);
+    }
 
     console.log(`\n🔍 Analyzing ${this.stars.length} repos for cleanup...\n`);
 
@@ -765,6 +874,7 @@ export class StarManagerAgent {
 
     const unstarResults = await this.analyzer.analyzeForUnstar(
       this.stars,
+      options,
       (progress) => {
         spinner.update(`AI 正在分析 (${progress}/${this.stars.length})`);
       }

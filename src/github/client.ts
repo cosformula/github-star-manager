@@ -23,10 +23,17 @@ export class GitHubClient {
 
     if (firstResponse.data.length === 0) return [];
 
-    // 解析 Link header 获取最后一页
+    // 解析 Link header 获取最后一页 (支持多种格式)
     const linkHeader = firstResponse.headers.link || "";
-    const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
-    const totalPages = lastPageMatch ? parseInt(lastPageMatch[1], 10) : 1;
+    // 尝试匹配: page=N>; rel="last" 或 page=N&...>; rel="last"
+    const lastPageMatch = linkHeader.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/);
+    let totalPages = lastPageMatch ? parseInt(lastPageMatch[1], 10) : 1;
+
+    // 如果解析失败但第一页是满的，尝试用备用方法
+    if (totalPages === 1 && firstResponse.data.length === perPage && !lastPageMatch) {
+      // 打印调试信息
+      console.error(`\n   ⚠️ Link header: "${linkHeader}"`);
+    }
     const estimatedTotal = maxCount ? Math.min(totalPages * perPage, maxCount) : totalPages * perPage;
 
     // Debug mode: 限制页数
