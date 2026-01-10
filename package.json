@@ -1,10 +1,37 @@
 {
   "name": "github-star-manager",
-  "module": "index.ts",
+  "version": "1.0.0",
+  "description": "AI-powered GitHub stars organizer - categorize repos into lists and clean up stale stars",
+  "author": "cosformula",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cosformula/github-star-manager.git"
+  },
+  "keywords": [
+    "github",
+    "stars",
+    "organizer",
+    "ai",
+    "cli"
+  ],
   "type": "module",
-  "private": true,
+  "bin": {
+    "github-star-manager": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "tsup": "^8.5.1"
   },
   "peerDependencies": {
     "typescript": "^5"
