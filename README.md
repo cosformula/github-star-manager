@@ -14,14 +14,14 @@ gh-star is a **command-line star management agent** that leverages LLM to semant
 - 📂 **Semantic Categorization** - Creates meaningful Lists using LLM understanding (not keyword matching)
 - ⭐ **Conservative Unstar** - Only suggests removing truly deprecated/broken repos
 - 💾 **Auto Backup** - Automatic backup before operations with one-click restore
-- 🤖 **Cost Optimized** - Uses different AI models for different tasks
+- 🤖 **Free by Default** - Uses free LLM model via OpenRouter
 - 🔄 **Dry Run** - Preview mode to see changes without executing
 
 ## Tech Stack
 
 - **Runtime**: [Bun](https://bun.sh/) (TypeScript)
 - **GitHub API**: Octokit REST + GraphQL (Lists API)
-- **AI**: OpenRouter API (Claude Sonnet / Haiku)
+- **AI**: OpenRouter API (default: mimo-v2-flash, free)
 
 ## Installation
 
@@ -114,9 +114,9 @@ Select from these modes at startup:
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  6. AI Analysis (with spinner animation)                    │
-│     ⠋ AI generating category suggestions... (claude-sonnet) │
+│     ⠋ AI generating category suggestions...                 │
 │     ✓ Categories complete (6 lists)                         │
-│     ⠹ AI classifying (100/1574)... (claude-3-5-haiku)       │
+│     ⠹ AI classifying (100/1574)...                          │
 │     ✓ Classification complete (1574 suggestions)            │
 └─────────────────────────────────────────────────────────────┘
                               ↓
@@ -203,7 +203,7 @@ Analysis is divided into two phases:
 ### Phase 1: Generate Category Suggestions
 
 ```
-All repos → Stratified sampling (60) → Claude Sonnet → 5-8 category suggestions
+All repos → Stratified sampling (60) → LLM → 5-8 category suggestions
 ```
 
 - **Stratified Sampling**: Samples by language proportion to ensure diversity
@@ -213,21 +213,20 @@ All repos → Stratified sampling (60) → Claude Sonnet → 5-8 category sugges
 ### Phase 2: Batch Classification
 
 ```
-All repos → 30 per batch → Claude Haiku → Categorize/Unstar/Keep decision
+All repos → 30 per batch → LLM → Categorize/Unstar/Keep decision
 ```
 
 - **Batch Processing**: 30 repos per batch to control API calls
 - **Three Decisions**: Assign to a List / Suggest unstar / Keep unchanged
-- **Cost Optimization**: Uses cheaper, faster Haiku model
 
 ### Model Configuration
 
-| Task | Model | Rationale |
-|------|-------|-----------|
-| Category Suggestions | `claude-sonnet-4` | Requires creativity and understanding |
-| Repo Classification/Unstar | `claude-3-5-haiku` | Fast and cheap for simple decisions |
+| Task | Model |
+|------|-------|
+| Category Suggestions | `xiaomi/mimo-v2-flash:free` |
+| Repo Classification/Unstar | `xiaomi/mimo-v2-flash:free` |
 
-Uses OpenRouter API. Default models can be changed in `src/analyzer.ts`.
+Uses OpenRouter API. Default model is free. Can be changed in `src/analyzer.ts`.
 
 ## GitHub Token Permissions
 

@@ -9,8 +9,8 @@ export interface ModelConfig {
 }
 
 const DEFAULT_MODELS: ModelConfig = {
-  categorization: "anthropic/claude-sonnet-4", // 更聪明，理解上下文
-  analysis: "anthropic/claude-3-5-haiku",       // 快速便宜，简单判断
+  categorization: "xiaomi/mimo-v2-flash:free", // 免费模型
+  analysis: "xiaomi/mimo-v2-flash:free",       // 免费模型
 };
 
 export class RepoAnalyzer {
@@ -378,6 +378,7 @@ Return JSON array:
 
     if (!repoResults || !Array.isArray(repoResults)) {
       console.error("   ⚠️ Parse error, marking batch as keep");
+      console.error("   Raw response:", response.slice(0, 500));
       return repos.map((r) => ({ repo: r.fullName, action: "keep" as const, reason: "Parse error" }));
     }
 
