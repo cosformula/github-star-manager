@@ -1326,7 +1326,8 @@ export class StarManagerAgent {
             const results = await Promise.all(
               itemsToProcess.map(async (item) => {
                 try {
-                  await this.github.addRepoToList(item.listId, item.repo!.nodeId);
+                  const existingListIds = this.getRepoListIds(item.repo!.fullName);
+                  await this.github.addRepoToList(item.listId, item.repo!.nodeId, existingListIds);
                   return { item, success: true, error: null };
                 } catch (e) {
                   return { item, success: false, error: e };
@@ -1483,5 +1484,21 @@ export class StarManagerAgent {
 
   private groupActions(actions: PlanAction[]): Record<string, PlanAction[]> {
     return actions.reduce((acc, a) => ((acc[a.type] ||= []).push(a), acc), {} as Record<string, PlanAction[]>);
+  }
+
+  /**
+   * Get list IDs that a repo belongs to based on cached listContents
+   */
+  private getRepoListIds(repoFullName: string): string[] {
+    const listIds: string[] = [];
+    for (const [listName, repos] of this.listContents) {
+      if (repos.some(r => r.fullName === repoFullName)) {
+        const list = this.lists.find(l => l.name === listName);
+        if (list) {
+          listIds.push(list.id);
+        }
+      }
+    }
+    return listIds;
   }
 }

@@ -354,7 +354,13 @@ export class GitHubClient {
     await this.graphql(query, { listId });
   }
 
-  async addRepoToList(listId: string, repoId: string): Promise<void> {
+  /**
+   * Add a repo to a list while preserving existing list memberships
+   * @param listId - The list ID to add the repo to
+   * @param repoId - The repo node ID
+   * @param existingListIds - Optional: list IDs the repo already belongs to (from cache)
+   */
+  async addRepoToList(listId: string, repoId: string, existingListIds: string[] = []): Promise<void> {
     const query = `
       mutation($itemId: ID!, $listIds: [ID!]!) {
         updateUserListsForItem(input: { itemId: $itemId, listIds: $listIds }) {
@@ -367,40 +373,19 @@ export class GitHubClient {
       }
     `;
 
-    // Get current lists for the repo, then add the new listId
-    const currentLists = await this.getRepoLists(repoId);
-    const newListIds = [...new Set([...currentLists, listId])];
+    // Combine existing lists with the new listId
+    const newListIds = [...new Set([...existingListIds, listId])];
 
     await this.graphql(query, { itemId: repoId, listIds: newListIds });
   }
 
-  async getRepoLists(repoId: string): Promise<string[]> {
-    const query = `
-      query($id: ID!) {
-        node(id: $id) {
-          ... on Repository {
-            viewerUserListsConnection(first: 100) {
-              nodes {
-                id
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    try {
-      const data = await this.graphql<{
-        node: { viewerUserListsConnection?: { nodes: { id: string }[] } };
-      }>(query, { id: repoId });
-      return data.node.viewerUserListsConnection?.nodes.map((n) => n.id) || [];
-    } catch {
-      // Silently fail - some repos don't support viewerUserListsConnection
-      return [];
-    }
-  }
-
-  async removeRepoFromList(listId: string, repoId: string): Promise<void> {
+  /**
+   * Remove a repo from a list
+   * @param listId - The list ID to remove the repo from
+   * @param repoId - The repo node ID
+   * @param existingListIds - List IDs the repo currently belongs to (from cache)
+   */
+  async removeRepoFromList(listId: string, repoId: string, existingListIds: string[]): Promise<void> {
     const query = `
       mutation($itemId: ID!, $listIds: [ID!]!) {
         updateUserListsForItem(input: { itemId: $itemId, listIds: $listIds }) {
@@ -413,9 +398,8 @@ export class GitHubClient {
       }
     `;
 
-    // Get current lists for the repo, then remove the listId
-    const currentLists = await this.getRepoLists(repoId);
-    const newListIds = currentLists.filter((id) => id !== listId);
+    // Remove the listId from existing lists
+    const newListIds = existingListIds.filter((id) => id !== listId);
 
     await this.graphql(query, { itemId: repoId, listIds: newListIds });
   }
