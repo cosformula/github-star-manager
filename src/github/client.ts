@@ -28,11 +28,7 @@ export class GitHubClient {
     const lastPageMatch = linkHeader.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/);
     let totalPages = lastPageMatch ? parseInt(lastPageMatch[1], 10) : 1;
 
-    // Debug: 打印 Link header
-    console.log(`\n   [DEBUG] Link header: ${linkHeader || "(empty)"}`);
-    console.log(`   [DEBUG] Parsed totalPages: ${totalPages}`);
-
-    // 如果解析失败但第一页是满的，有问题
+    // 如果解析失败但第一页是满的，使用回退方案
     const linkParseFailed = totalPages === 1 && firstResponse.data.length === perPage && !lastPageMatch;
 
     const estimatedTotal = maxCount
