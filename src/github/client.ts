@@ -11,21 +11,54 @@ export class GitHubClient {
   }
 
   async getStarredRepos(onProgress?: (count: number) => void, maxCount?: number): Promise<StarredRepo[]> {
-    const repos: StarredRepo[] = [];
-    let page = 1;
     const perPage = 100;
 
-    while (true) {
-      const response = await this.octokit.activity.listReposStarredByAuthenticatedUser({
-        per_page: perPage,
-        page,
-        sort: "created",
-        direction: "desc",
-      });
+    // Step 1: 获取第一页，同时解析 Link header 得到总页数
+    const firstResponse = await this.octokit.activity.listReposStarredByAuthenticatedUser({
+      per_page: perPage,
+      page: 1,
+      sort: "created",
+      direction: "desc",
+    });
 
-      if (response.data.length === 0) break;
+    if (firstResponse.data.length === 0) return [];
 
-      for (const repo of response.data) {
+    // 解析 Link header 获取最后一页
+    const linkHeader = firstResponse.headers.link || "";
+    const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
+    const totalPages = lastPageMatch ? parseInt(lastPageMatch[1], 10) : 1;
+
+    // Debug mode: 限制页数
+    const maxPages = maxCount ? Math.ceil(maxCount / perPage) : totalPages;
+    const pagesToFetch = Math.min(totalPages, maxPages);
+
+    // Step 2: 并行获取剩余页面 (并发数限制为 5)
+    const CONCURRENCY = 5;
+    const allResponses: any[][] = [firstResponse.data];
+
+    for (let i = 2; i <= pagesToFetch; i += CONCURRENCY) {
+      const batch = [];
+      for (let p = i; p < i + CONCURRENCY && p <= pagesToFetch; p++) {
+        batch.push(
+          this.octokit.activity.listReposStarredByAuthenticatedUser({
+            per_page: perPage,
+            page: p,
+            sort: "created",
+            direction: "desc",
+          })
+        );
+      }
+      const results = await Promise.all(batch);
+      for (const res of results) {
+        allResponses.push(res.data);
+      }
+      onProgress?.(allResponses.flat().length);
+    }
+
+    // Step 3: 转换数据
+    const repos: StarredRepo[] = [];
+    for (const data of allResponses) {
+      for (const repo of data) {
         const repoData = "repo" in repo ? repo.repo : repo;
         repos.push({
           id: repoData.id,
@@ -45,15 +78,10 @@ export class GitHubClient {
           disabled: repoData.disabled,
         });
 
-        // Debug mode: 限制获取数量
         if (maxCount && repos.length >= maxCount) {
-          onProgress?.(repos.length);
           return repos;
         }
       }
-
-      onProgress?.(repos.length);
-      page++;
     }
 
     return repos;
