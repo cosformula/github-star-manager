@@ -191,6 +191,8 @@ export class RepoAnalyzer {
 
   private async analyzeUnstarBatch(repos: StarredRepo[], options: UnstarOptions): Promise<Array<{ repo: string; reason: string }>> {
     const { include, exclude } = this.buildUnstarCriteriaPrompt(options);
+    const batchStart = repos[0]?.fullName || "unknown";
+    const batchEnd = repos[repos.length - 1]?.fullName || "unknown";
     const staleYears = options.staleYears ?? 2;
     const lowStarsThreshold = options.lowStarsThreshold ?? 100;
 
@@ -209,12 +211,21 @@ ${repos.map((r) => {
   return `- ${r.fullName} | ${r.description?.slice(0, 60) || "no desc"} | ⭐${r.stargazersCount} | ${age} | ${r.archived ? "ARCHIVED" : "active"}${isFork ? " | likely-fork" : ""}`;
 }).join("\n")}
 
-Return JSON with ONLY repos to unstar:
-{ "unstar": [{ "repo": "owner/name", "reason": "brief reason" }] }
+Return JSON with repos to unstar and a brief summary:
+{
+  "summary": "Brief analysis summary (1-2 sentences)",
+  "unstar": [{ "repo": "owner/name", "reason": "brief reason" }]
+}
 
-If none should be unstarred: { "unstar": [] }`;
+If none should be unstarred: { "summary": "...", "unstar": [] }`;
 
     const parsed = await this.callLLMForJSON(prompt, this.models.analysis);
+
+    // Log the LLM's summary for visibility
+    if (parsed?.summary) {
+      console.error(`   📊 Batch ${batchStart.split('/')[0]}...${batchEnd.split('/')[0]}: ${parsed.summary}`);
+    }
+
     return parsed?.unstar || [];
   }
 
@@ -373,14 +384,23 @@ Note: Repos marked with "IN:[...]" are already in those lists. You can add them 
 Repos:
 ${repoLines}
 
-Return JSON array:
-[
-  { "repo": "owner/name", "action": "categorize", "list": 1 },
-  { "repo": "owner/name", "action": "keep" },
-  { "repo": "owner/name", "action": "unstar" }
-]`;
+Return JSON with summary:
+{
+  "summary": "Brief categorization summary",
+  "repos": [
+    { "repo": "owner/name", "action": "categorize", "list": 1 },
+    { "repo": "owner/name", "action": "keep" }
+  ]
+}`;
 
     const parsed = await this.callLLMForJSON(prompt, this.models.analysis);
+
+    // Log summary for visibility
+    if (parsed?.summary) {
+      const batchStart = repos[0]?.fullName?.split('/')[0] || "?";
+      const batchEnd = repos[repos.length - 1]?.fullName?.split('/')[0] || "?";
+      console.error(`   📊 Batch ${batchStart}...${batchEnd}: ${parsed.summary}`);
+    }
 
     // Support both formats: { repos: [...] } or direct [...]
     const repoResults = Array.isArray(parsed) ? parsed : parsed?.repos;
