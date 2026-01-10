@@ -651,13 +651,35 @@ export class StarManagerAgent {
     const reposInLists = Array.from(existingRepoLists.keys()).length;
     console.log(`   Found ${reposInLists} repos already in lists`);
 
-    console.log(`\n🔍 Categorizing ${this.stars.length} repos into ${this.finalizedLists.length} lists...\n`);
+    // 询问是否跳过已分类的 repos
+    let reposToAnalyze = this.stars;
+    if (reposInLists > 0) {
+      const { skipCategorized } = await prompts({
+        type: "confirm",
+        name: "skipCategorized",
+        message: `Skip ${reposInLists} already-categorized repos? (recommended for resuming)`,
+        initial: true,
+      });
+
+      if (skipCategorized) {
+        reposToAnalyze = this.stars.filter(r => !existingRepoLists.has(r.fullName));
+        console.log(`   ⏭️  Skipping ${reposInLists} repos, analyzing ${reposToAnalyze.length} uncategorized repos`);
+      }
+    }
+
+    if (reposToAnalyze.length === 0) {
+      console.log(`\n✅ All repos are already categorized!`);
+      console.log("═".repeat(50));
+      return;
+    }
+
+    console.log(`\n🔍 Categorizing ${reposToAnalyze.length} repos into ${this.finalizedLists.length} lists...\n`);
 
     const spinner = new Spinner("AI 正在分类");
     spinner.start();
 
     const categorizationResults = await this.analyzer.categorizeRepos(
-      this.stars,
+      reposToAnalyze,
       this.finalizedLists,
       existingRepoLists,
       (progress, total, tokens, eta) => {
@@ -1129,8 +1151,8 @@ export class StarManagerAgent {
           })
         );
 
-        // Step 3: 使用并发池写入（控制并发数为 10，避免触发 rate limit）
-        const CONCURRENCY = 10;
+        // Step 3: 使用并发池写入（控制并发数为 5，避免触发 rate limit）
+        const CONCURRENCY = 5;
         const validRepos = repoResults.filter(r => r.repo && !r.error);
         const invalidRepos = repoResults.filter(r => !r.repo || r.error);
 
@@ -1224,8 +1246,8 @@ export class StarManagerAgent {
         unstarSuccess = unstarActions.length;
         process.stdout.write(`   进度: ${unstarSuccess}/${unstarActions.length} (✓${unstarSuccess} ✗0)`);
       } else {
-        // 使用并发池（并发数 10）
-        const CONCURRENCY = 10;
+        // 使用并发池（并发数 5）
+        const CONCURRENCY = 5;
         
         for (let i = 0; i < unstarActions.length; i += CONCURRENCY) {
           const batch = unstarActions.slice(i, i + CONCURRENCY);

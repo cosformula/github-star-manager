@@ -82,22 +82,44 @@ export class GitHubClient {
     return { scopes, canCreateLists };
   }
 
-  // GraphQL helper for Lists API
+  // GraphQL helper for Lists API (with retry)
   private async graphql<T>(query: string, variables?: Record<string, any>): Promise<T> {
-    const response = await fetch("https://api.github.com/graphql", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ query, variables }),
-    });
+    const maxRetries = 3;
+    let lastError: Error | null = null;
 
-    const json = await response.json();
-    if (json.errors) {
-      throw new Error(json.errors.map((e: any) => e.message).join(", "));
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch("https://api.github.com/graphql", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ query, variables }),
+        });
+
+        const json = await response.json();
+        if (json.errors) {
+          const errorMsg = json.errors.map((e: any) => e.message).join(", ");
+          // 如果是服务端错误，进行重试
+          if (errorMsg.includes("Something went wrong") || response.status >= 500) {
+            throw new Error(errorMsg);
+          }
+          // 其他错误直接抛出
+          throw new Error(errorMsg);
+        }
+        return json.data;
+      } catch (error) {
+        lastError = error as Error;
+        if (attempt < maxRetries) {
+          const delay = attempt * 2000; // 2s, 4s, 6s
+          console.error(`   ⚠️ GitHub API 错误，${delay/1000}s 后重试 (${attempt}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
-    return json.data;
+
+    throw lastError;
   }
 
   async getLists(): Promise<StarList[]> {
