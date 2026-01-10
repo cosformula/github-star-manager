@@ -394,8 +394,8 @@ export class GitHubClient {
         node: { viewerUserListsConnection?: { nodes: { id: string }[] } };
       }>(query, { id: repoId });
       return data.node.viewerUserListsConnection?.nodes.map((n) => n.id) || [];
-    } catch (error) {
-      console.error(`Failed to get lists for repo ${repoId}:`, error);
+    } catch {
+      // Silently fail - some repos don't support viewerUserListsConnection
       return [];
     }
   }
@@ -442,8 +442,8 @@ export class GitHubClient {
         archived: data.archived,
         disabled: data.disabled,
       });
-    } catch (error) {
-      console.error(`Failed to get repo ${fullName}:`, error);
+    } catch {
+      // Silently fail - repo may not exist or be inaccessible
       return null;
     }
   }
