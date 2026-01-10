@@ -11,6 +11,7 @@ export class StarManagerAgent {
   private backup!: BackupManager;
   private stars: StarredRepo[] = [];
   private lists: StarList[] = [];
+  private listContents: Map<string, StarredRepo[]> = new Map(); // 缓存 list 内容
   private plan: ExecutionPlan | null = null;
   private canCreateLists = false;
 
@@ -330,6 +331,32 @@ export class StarManagerAgent {
       this.lists = await this.github.getLists();
       spinnerLists.stop(`Lists: ${this.lists.length} lists`);
 
+      // 获取 list 内容 (并行，用于备份和分类)
+      if (this.lists.length > 0) {
+        const spinnerListContents = new Spinner("获取 List 内容");
+        spinnerListContents.start();
+        const CONCURRENCY = 5;
+        for (let i = 0; i < this.lists.length; i += CONCURRENCY) {
+          const batch = this.lists.slice(i, i + CONCURRENCY);
+          const results = await Promise.all(
+            batch.map(async (list) => {
+              try {
+                const repos = await this.github.getListItems(list.id);
+                return { list, repos };
+              } catch {
+                return { list, repos: [] };
+              }
+            })
+          );
+          for (const { list, repos } of results) {
+            this.listContents.set(list.name, repos);
+          }
+          spinnerListContents.update(`获取 List 内容 (${Math.min(i + CONCURRENCY, this.lists.length)}/${this.lists.length})`);
+        }
+        const totalReposInLists = Array.from(this.listContents.values()).reduce((sum, repos) => sum + repos.length, 0);
+        spinnerListContents.stop(`List 内容: ${totalReposInLists} repos in ${this.lists.length} lists`);
+      }
+
       // 计算 stats
       const { staleRepos, archivedRepos } = this.analyzer.getRepoStats(this.stars);
       this.staleRepos = staleRepos;
@@ -344,7 +371,7 @@ export class StarManagerAgent {
     const spinner = new Spinner("创建备份");
     spinner.start();
     try {
-      const filepath = await this.backup.createBackup(this.stars, this.lists);
+      const filepath = await this.backup.createBackup(this.stars, this.lists, this.listContents);
       spinner.stop(`备份完成: ${filepath}`);
     } catch (e) {
       spinner.stop(`备份失败: ${e instanceof Error ? e.message : e}`);
@@ -645,11 +672,9 @@ export class StarManagerAgent {
     console.log("📁 Categorization");
     console.log("═".repeat(50));
 
-    // Fetch existing list contents to tell AI which repos are already categorized
-    console.log("\n📂 Fetching existing list contents...");
-    const existingRepoLists = await this.fetchExistingRepoLists();
+    // 使用缓存的 list 内容
+    const existingRepoLists = this.getExistingRepoLists();
     const reposInLists = Array.from(existingRepoLists.keys()).length;
-    console.log(`   Found ${reposInLists} repos already in lists`);
 
     // 询问是否跳过已分类的 repos
     let reposToAnalyze = this.stars;
@@ -706,34 +731,17 @@ export class StarManagerAgent {
   }
 
   /**
-   * Fetch which repos are already in which lists
+   * Get which repos are already in which lists
    * Returns a map: repo fullName -> list names[]
-   * Optimized: fetches all lists in parallel
+   * Uses cached listContents from fetchData()
    */
-  private async fetchExistingRepoLists(): Promise<Map<string, string[]>> {
+  private getExistingRepoLists(): Map<string, string[]> {
     const repoToLists = new Map<string, string[]>();
 
-    // 并行获取所有 lists 的内容
-    const results = await Promise.all(
-      this.lists.map(async (list) => {
-        try {
-          const repos = await this.github.getListItems(list.id);
-          return { list, repos, error: null };
-        } catch (e) {
-          return { list, repos: [], error: e };
-        }
-      })
-    );
-
-    // 处理结果
-    for (const { list, repos, error } of results) {
-      if (error) {
-        console.log(`   ⚠️ Failed to fetch "${list.name}": ${error instanceof Error ? error.message : error}`);
-        continue;
-      }
+    for (const [listName, repos] of this.listContents) {
       for (const repo of repos) {
         const existing = repoToLists.get(repo.fullName) || [];
-        existing.push(list.name);
+        existing.push(listName);
         repoToLists.set(repo.fullName, existing);
       }
     }

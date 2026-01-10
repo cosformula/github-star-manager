@@ -28,22 +28,39 @@ export class BackupManager {
     }
   }
 
-  async createBackup(stars: StarredRepo[], lists: StarList[]): Promise<string> {
+  async createBackup(
+    stars: StarredRepo[],
+    lists: StarList[],
+    listContents?: Map<string, StarredRepo[]>
+  ): Promise<string> {
     const user = await this.github.getAuthenticatedUser();
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
-    // Fetch list items for each list
-    const listsWithRepos = await Promise.all(
-      lists.map(async (list) => {
-        const items = await this.github.getListItems(list.id);
-        return {
-          id: list.id,
-          name: list.name,
-          description: list.description,
-          repos: items.map((r) => r.fullName),
-        };
-      })
-    );
+    // 使用预获取的 list 内容，或者重新获取
+    let listsWithRepos: { id: string; name: string; description: string | null; repos: string[] }[];
+
+    if (listContents && listContents.size > 0) {
+      // 使用缓存的数据
+      listsWithRepos = lists.map((list) => ({
+        id: list.id,
+        name: list.name,
+        description: list.description,
+        repos: (listContents.get(list.name) || []).map((r) => r.fullName),
+      }));
+    } else {
+      // 兜底：重新获取
+      listsWithRepos = await Promise.all(
+        lists.map(async (list) => {
+          const items = await this.github.getListItems(list.id);
+          return {
+            id: list.id,
+            name: list.name,
+            description: list.description,
+            repos: items.map((r) => r.fullName),
+          };
+        })
+      );
+    }
 
     const backup: Backup = {
       timestamp,

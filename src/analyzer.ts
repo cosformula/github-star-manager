@@ -1,4 +1,4 @@
-import type { StarredRepo, StarList, ListSuggestion, RepoSuggestion, AnalysisResult } from "./types";
+import type { StarredRepo, StarList, ListSuggestion, RepoSuggestion, AnalysisResult, UnstarOptions, UnstarCriteriaId } from "./types";
 import { Spinner } from "./spinner";
 
 export interface ModelConfig {
