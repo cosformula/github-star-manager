@@ -1032,7 +1032,8 @@ export class StarManagerAgent {
       if (grouped.add_to_list?.length) {
         const byList: Record<string, number> = {};
         for (const a of grouped.add_to_list) {
-          byList[a.params.list_name] = (byList[a.params.list_name] || 0) + 1;
+          const listName = a.params.list_name || "unknown";
+          byList[listName] = (byList[listName] || 0) + 1;
         }
         console.log(`➕ Add to lists (${grouped.add_to_list.length} repos):`);
         for (const [listName, count] of Object.entries(byList).slice(0, 10)) {
@@ -1305,25 +1306,59 @@ export class StarManagerAgent {
           }
         }
 
-        // 并发池执行写入
+        // 并发池执行写入（带批次级别重试）
         console.log(`   📤 并发写入 ${validRepos.length} 个 repos (并发数: ${CONCURRENCY})...`);
-        let completed = 0;
-        
+        const MAX_BATCH_RETRIES = 3;
+
         for (let i = 0; i < validRepos.length; i += CONCURRENCY) {
           const batch = validRepos.slice(i, i + CONCURRENCY);
-          const results = await Promise.all(
-            batch.map(async ({ listId, repo }) => {
-              try {
-                await this.github.addRepoToList(listId, repo!.nodeId);
-                return { success: true, error: null };
-              } catch (e) {
-                return { success: false, error: e };
-              }
-            })
-          );
+          let batchRetry = 0;
+          let batchResults: Array<{ item: typeof batch[0]; success: boolean; error: unknown }> = [];
 
-          for (const result of results) {
-            completed++;
+          // 批次级别重试循环
+          while (batchRetry < MAX_BATCH_RETRIES) {
+            const itemsToProcess = batchRetry === 0
+              ? batch
+              : batchResults.filter(r => !r.success && (r.error as any)?.retryable).map(r => r.item);
+
+            if (itemsToProcess.length === 0) break;
+
+            const results = await Promise.all(
+              itemsToProcess.map(async (item) => {
+                try {
+                  await this.github.addRepoToList(item.listId, item.repo!.nodeId);
+                  return { item, success: true, error: null };
+                } catch (e) {
+                  return { item, success: false, error: e };
+                }
+              })
+            );
+
+            // 合并结果
+            if (batchRetry === 0) {
+              batchResults = results;
+            } else {
+              // 更新重试的结果
+              for (const result of results) {
+                const idx = batchResults.findIndex(r => r.item === result.item);
+                if (idx >= 0) batchResults[idx] = result;
+              }
+            }
+
+            // 检查是否需要重试
+            const retryableErrors = batchResults.filter(r => !r.success && (r.error as any)?.retryable);
+            if (retryableErrors.length === 0) break;
+
+            batchRetry++;
+            if (batchRetry < MAX_BATCH_RETRIES) {
+              const delay = batchRetry * 2000; // 2s, 4s
+              console.log(`\n   ⚠️ 批次 ${Math.floor(i / CONCURRENCY) + 1} 有 ${retryableErrors.length} 个请求失败，${delay / 1000}s 后重试 (${batchRetry}/${MAX_BATCH_RETRIES})...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
+
+          // 统计批次结果
+          for (const result of batchResults) {
             if (result.success) {
               addSuccess++;
             } else {
@@ -1390,7 +1425,12 @@ export class StarManagerAgent {
           const results = await Promise.all(
             batch.map(async (action) => {
               try {
-                const [owner, repo] = (action.params.repo_full_name || "").split("/");
+                const parts = (action.params.repo_full_name || "").split("/");
+                const owner = parts[0] || "";
+                const repo = parts[1] || "";
+                if (!owner || !repo) {
+                  return { success: false, error: new Error("Invalid repo name") };
+                }
                 await this.github.unstarRepo(owner, repo);
                 return { success: true, error: null };
               } catch (e) {

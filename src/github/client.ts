@@ -177,44 +177,26 @@ export class GitHubClient {
     return { scopes, canCreateLists };
   }
 
-  // GraphQL helper for Lists API (with retry)
+  // GraphQL helper for Lists API (no retry - let caller handle batch-level retry)
   private async graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
-    const maxRetries = 3;
-    let lastError: Error | null = null;
+    const response = await fetch("https://api.github.com/graphql", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query, variables }),
+    });
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await fetch("https://api.github.com/graphql", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ query, variables }),
-        });
-
-        const json = await response.json() as { data?: T; errors?: Array<{ message: string }> };
-        if (json.errors) {
-          const errorMsg = json.errors.map((e) => e.message).join(", ");
-          // Retry on server errors
-          if (errorMsg.includes("Something went wrong") || response.status >= 500) {
-            throw new Error(errorMsg);
-          }
-          // Throw immediately on other errors
-          throw new Error(errorMsg);
-        }
-        return json.data as T;
-      } catch (error) {
-        lastError = error as Error;
-        if (attempt < maxRetries) {
-          const delay = attempt * 2000; // 2s, 4s, 6s
-          console.error(`   ⚠️ GitHub API error, retrying in ${delay/1000}s (${attempt}/${maxRetries})...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
+    const json = await response.json() as { data?: T; errors?: Array<{ message: string }> };
+    if (json.errors) {
+      const errorMsg = json.errors.map((e) => e.message).join(", ");
+      const error = new Error(errorMsg) as Error & { retryable: boolean };
+      // Mark server errors as retryable
+      error.retryable = errorMsg.includes("Something went wrong") || response.status >= 500;
+      throw error;
     }
-
-    throw lastError;
+    return json.data as T;
   }
 
   async getLists(): Promise<StarList[]> {
