@@ -13,7 +13,7 @@ export class GitHubClient {
   async getStarredRepos(onProgress?: (count: number, total: number) => void, maxCount?: number): Promise<StarredRepo[]> {
     const perPage = 100;
 
-    // Step 1: 获取第一页，同时解析 Link header 得到总页数
+    // Step 1: 获取第一页，解析 Link header 得到总页数
     const firstResponse = await this.octokit.activity.listReposStarredByAuthenticatedUser({
       per_page: perPage,
       page: 1,
@@ -26,61 +26,37 @@ export class GitHubClient {
     // 解析 Link header 获取最后一页
     const linkHeader = firstResponse.headers.link || "";
     const lastPageMatch = linkHeader.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/);
-    let totalPages = lastPageMatch ? parseInt(lastPageMatch[1], 10) : 1;
+    const totalPages = lastPageMatch ? parseInt(lastPageMatch[1], 10) : 1;
+    const estimatedTotal = maxCount ? Math.min(totalPages * perPage, maxCount) : totalPages * perPage;
 
-    // 如果解析失败但第一页是满的，使用回退方案
-    const linkParseFailed = totalPages === 1 && firstResponse.data.length === perPage && !lastPageMatch;
+    // 计算需要获取的页数
+    const maxPages = maxCount ? Math.ceil(maxCount / perPage) : totalPages;
+    const pagesToFetch = Math.min(totalPages, maxPages);
 
-    const estimatedTotal = maxCount
-      ? Math.min(totalPages * perPage, maxCount)
-      : (linkParseFailed ? 9999 : totalPages * perPage); // 回退时显示 ?
-
-    // Debug mode: 限制页数
-    const maxPages = maxCount ? Math.ceil(maxCount / perPage) : (linkParseFailed ? 999 : totalPages);
-    const pagesToFetch = Math.min(linkParseFailed ? 999 : totalPages, maxPages);
-
-    // 立即报告第一页的进度
+    // 报告第一页进度
     onProgress?.(firstResponse.data.length, estimatedTotal);
 
+    // Step 2: 并行获取剩余页面
     const CONCURRENCY = 3;
     const allResponses: any[][] = [firstResponse.data];
 
-    if (linkParseFailed) {
-      // 回退方案：逐页获取直到空页
-      let page = 2;
-      while (page <= pagesToFetch) {
-        const response = await this.octokit.activity.listReposStarredByAuthenticatedUser({
-          per_page: perPage,
-          page,
-          sort: "created",
-          direction: "desc",
-        });
-        if (response.data.length === 0) break;
-        allResponses.push(response.data);
-        onProgress?.(allResponses.flat().length, allResponses.flat().length);
-        if (maxCount && allResponses.flat().length >= maxCount) break;
-        page++;
+    for (let i = 2; i <= pagesToFetch; i += CONCURRENCY) {
+      const batch = [];
+      for (let p = i; p < i + CONCURRENCY && p <= pagesToFetch; p++) {
+        batch.push(
+          this.octokit.activity.listReposStarredByAuthenticatedUser({
+            per_page: perPage,
+            page: p,
+            sort: "created",
+            direction: "desc",
+          })
+        );
       }
-    } else {
-      // 正常并行获取
-      for (let i = 2; i <= pagesToFetch; i += CONCURRENCY) {
-        const batch = [];
-        for (let p = i; p < i + CONCURRENCY && p <= pagesToFetch; p++) {
-          batch.push(
-            this.octokit.activity.listReposStarredByAuthenticatedUser({
-              per_page: perPage,
-              page: p,
-              sort: "created",
-              direction: "desc",
-            })
-          );
-        }
-        const results = await Promise.all(batch);
-        for (const res of results) {
-          allResponses.push(res.data);
-        }
-        onProgress?.(allResponses.flat().length, estimatedTotal);
+      const results = await Promise.all(batch);
+      for (const res of results) {
+        allResponses.push(res.data);
       }
+      onProgress?.(allResponses.flat().length, estimatedTotal);
     }
 
     // Step 3: 转换数据
