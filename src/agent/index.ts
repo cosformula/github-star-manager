@@ -335,7 +335,7 @@ export class StarManagerAgent {
       if (this.lists.length > 0) {
         const spinnerListContents = new Spinner("获取 List 内容");
         spinnerListContents.start();
-        const CONCURRENCY = 5;
+        const CONCURRENCY = 3;
         for (let i = 0; i < this.lists.length; i += CONCURRENCY) {
           const batch = this.lists.slice(i, i + CONCURRENCY);
           const results = await Promise.all(
@@ -1159,8 +1159,8 @@ export class StarManagerAgent {
           })
         );
 
-        // Step 3: 使用并发池写入（控制并发数为 5，避免触发 rate limit）
-        const CONCURRENCY = 5;
+        // Step 3: 使用并发池写入（控制并发数为 3，避免触发 rate limit）
+        const CONCURRENCY = 3;
         const validRepos = repoResults.filter(r => r.repo && !r.error);
         const invalidRepos = repoResults.filter(r => !r.repo || r.error);
 
@@ -1213,6 +1213,10 @@ export class StarManagerAgent {
             }
           }
           process.stdout.write(`\r   进度: ${addSuccess + addSkipped + addFailed}/${addActions.length} (✓${addSuccess} ✗${addFailed})`);
+          // 批次间延迟，避免 rate limit
+          if (i + CONCURRENCY < validRepos.length) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
         }
       }
 
@@ -1254,9 +1258,9 @@ export class StarManagerAgent {
         unstarSuccess = unstarActions.length;
         process.stdout.write(`   进度: ${unstarSuccess}/${unstarActions.length} (✓${unstarSuccess} ✗0)`);
       } else {
-        // 使用并发池（并发数 5）
-        const CONCURRENCY = 5;
-        
+        // 使用并发池（并发数 3）
+        const CONCURRENCY = 3;
+
         for (let i = 0; i < unstarActions.length; i += CONCURRENCY) {
           const batch = unstarActions.slice(i, i + CONCURRENCY);
           const results = await Promise.all(
@@ -1285,6 +1289,10 @@ export class StarManagerAgent {
             }
           }
           process.stdout.write(`\r   进度: ${unstarSuccess + unstarFailed}/${unstarActions.length} (✓${unstarSuccess} ✗${unstarFailed})`);
+          // 批次间延迟
+          if (i + CONCURRENCY < unstarActions.length) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
         }
       }
 

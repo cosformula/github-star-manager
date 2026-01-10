@@ -37,7 +37,7 @@ export class GitHubClient {
     onProgress?.(firstResponse.data.length, estimatedTotal);
 
     // Step 2: 并行获取剩余页面 (并发数限制为 5)
-    const CONCURRENCY = 5;
+    const CONCURRENCY = 3;
     const allResponses: any[][] = [firstResponse.data];
 
     for (let i = 2; i <= pagesToFetch; i += CONCURRENCY) {

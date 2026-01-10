@@ -123,7 +123,11 @@ export class RepoAnalyzer {
     if (options.unstarOnly) {
       const spinner = new Spinner("AI 正在分析 unstar 建议");
       spinner.start();
-      const repoSuggestions = await this.analyzeForUnstar(repos, (progress) => {
+      // Legacy: 使用默认的清理条件
+      const defaultUnstarOptions: UnstarOptions = {
+        criteria: ["deprecated", "joke_meme", "personal_fork"],
+      };
+      const repoSuggestions = await this.analyzeForUnstar(repos, defaultUnstarOptions, (progress) => {
         spinner.update(`AI 正在分析 (${progress}/${repos.length})`);
       });
       spinner.stop(`分析完成 (${repoSuggestions.filter((s) => s.action === "unstar").length} 个 unstar 建议)`);
@@ -150,6 +154,7 @@ export class RepoAnalyzer {
    */
   async analyzeForUnstar(
     repos: StarredRepo[],
+    options: UnstarOptions,
     onProgress?: (processed: number) => void
   ): Promise<RepoSuggestion[]> {
     const results: RepoSuggestion[] = [];
@@ -157,7 +162,7 @@ export class RepoAnalyzer {
 
     for (let i = 0; i < repos.length; i += batchSize) {
       const batch = repos.slice(i, i + batchSize);
-      const batchResults = await this.analyzeUnstarBatch(batch);
+      const batchResults = await this.analyzeUnstarBatch(batch, options);
 
       for (const result of batchResults) {
         const repo = repos.find((r) => r.fullName === result.repo);
@@ -179,25 +184,70 @@ export class RepoAnalyzer {
     return results;
   }
 
-  private async analyzeUnstarBatch(repos: StarredRepo[]): Promise<Array<{ repo: string; reason: string }>> {
-    const prompt = `Analyze these GitHub repos and identify which ones should be UNSTARRED.
+  /**
+   * 根据用户选择的条件构建 unstar 的 prompt
+   */
+  private buildUnstarCriteriaPrompt(options: UnstarOptions): { include: string; exclude: string } {
+    const staleYears = options.staleYears ?? 2;
+    const lowStarsThreshold = options.lowStarsThreshold ?? 100;
 
-Be CONSERVATIVE! Only suggest unstar for repos that are clearly not useful:
-- Deprecated with a recommended replacement
-- Joke/meme repos
-- Broken/abandoned with no value
-- Outdated personal forks
+    const criteriaDescriptions: Record<UnstarCriteriaId, string> = {
+      archived: "Archived repos (marked as archived by owner)",
+      stale: `Stale repos (not updated in ${staleYears}+ years)`,
+      low_stars: `Low popularity repos (< ${lowStarsThreshold} stars)`,
+      deprecated: "Deprecated repos (has recommended replacement or marked deprecated)",
+      personal_fork: "Personal forks (forks of other repos, especially outdated ones)",
+      joke_meme: "Joke/meme repos (not meant for serious use)",
+    };
+
+    const includeCriteria = options.criteria
+      .map((id) => `- ${criteriaDescriptions[id]}`)
+      .join("\n");
+
+    // 构建排除条件（用户未选择的条件中，一些需要特别保留的）
+    const excludeItems: string[] = [];
+    if (!options.criteria.includes("archived")) {
+      excludeItems.push("- Archived but still useful repos (reference, learning)");
+    }
+    if (!options.criteria.includes("stale")) {
+      excludeItems.push("- Old but classic/stable libraries");
+    }
+    if (!options.criteria.includes("low_stars")) {
+      excludeItems.push("- Low star count but useful niche tools");
+    }
+    // 始终保留的
+    excludeItems.push("- Active learning resources");
+    excludeItems.push("- Repos with high personal value (tools you actually use)");
+
+    let customNote = "";
+    if (options.customCriteria) {
+      customNote = `\n\nAdditional user-specified criteria:\n${options.customCriteria}`;
+    }
+
+    return {
+      include: includeCriteria + customNote,
+      exclude: excludeItems.join("\n"),
+    };
+  }
+
+  private async analyzeUnstarBatch(repos: StarredRepo[], options: UnstarOptions): Promise<Array<{ repo: string; reason: string }>> {
+    const { include, exclude } = this.buildUnstarCriteriaPrompt(options);
+    const staleYears = options.staleYears ?? 2;
+    const lowStarsThreshold = options.lowStarsThreshold ?? 100;
+
+    const prompt = `Analyze these GitHub repos and identify which ones should be UNSTARRED based on the criteria below.
+
+UNSTAR criteria (repos matching ANY of these should be suggested for unstar):
+${include}
 
 Do NOT suggest unstar for:
-- Archived but still useful repos
-- Old but classic/stable libraries
-- Learning resources
-- High star count (10k+) repos
+${exclude}
 
 Repos:
 ${repos.map((r) => {
   const age = this.getAge(r.pushedAt);
-  return `- ${r.fullName} | ${r.description?.slice(0, 60) || "no desc"} | ⭐${r.stargazersCount} | ${age} | ${r.archived ? "ARCHIVED" : "active"}`;
+  const isFork = r.fullName.includes("/") && r.forksCount === 0 && r.stargazersCount < 10;
+  return `- ${r.fullName} | ${r.description?.slice(0, 60) || "no desc"} | ⭐${r.stargazersCount} | ${age} | ${r.archived ? "ARCHIVED" : "active"}${isFork ? " | likely-fork" : ""}`;
 }).join("\n")}
 
 Return JSON with ONLY repos to unstar:
