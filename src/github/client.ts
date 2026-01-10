@@ -1,0 +1,304 @@
+import { Octokit } from "@octokit/rest";
+import type { StarredRepo, StarList } from "../types";
+
+export class GitHubClient {
+  private octokit: Octokit;
+  private token: string;
+
+  constructor(token: string) {
+    this.token = token;
+    this.octokit = new Octokit({ auth: token });
+  }
+
+  async getStarredRepos(): Promise<StarredRepo[]> {
+    const repos: StarredRepo[] = [];
+    let page = 1;
+    const perPage = 100;
+
+    while (true) {
+      const response = await this.octokit.activity.listReposStarredByAuthenticatedUser({
+        per_page: perPage,
+        page,
+        sort: "created",
+        direction: "desc",
+      });
+
+      if (response.data.length === 0) break;
+
+      for (const repo of response.data) {
+        const repoData = "repo" in repo ? repo.repo : repo;
+        repos.push({
+          id: repoData.id,
+          nodeId: repoData.node_id,
+          name: repoData.name,
+          fullName: repoData.full_name,
+          description: repoData.description,
+          url: repoData.html_url,
+          homepage: repoData.homepage,
+          language: repoData.language,
+          topics: repoData.topics || [],
+          stargazersCount: repoData.stargazers_count,
+          forksCount: repoData.forks_count,
+          updatedAt: repoData.updated_at || "",
+          pushedAt: repoData.pushed_at || "",
+          archived: repoData.archived,
+          disabled: repoData.disabled,
+        });
+      }
+
+      page++;
+    }
+
+    return repos;
+  }
+
+  async unstarRepo(owner: string, repo: string): Promise<void> {
+    await this.octokit.activity.unstarRepoForAuthenticatedUser({ owner, repo });
+  }
+
+  async starRepo(owner: string, repo: string): Promise<void> {
+    await this.octokit.activity.starRepoForAuthenticatedUser({ owner, repo });
+  }
+
+  async getAuthenticatedUser(): Promise<{ login: string; id: string }> {
+    const { data } = await this.octokit.users.getAuthenticated();
+    return { login: data.login, id: data.node_id };
+  }
+
+  // GraphQL helper for Lists API
+  private async graphql<T>(query: string, variables?: Record<string, any>): Promise<T> {
+    const response = await fetch("https://api.github.com/graphql", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+
+    const json = await response.json();
+    if (json.errors) {
+      throw new Error(json.errors.map((e: any) => e.message).join(", "));
+    }
+    return json.data;
+  }
+
+  async getLists(): Promise<StarList[]> {
+    const query = `
+      query {
+        viewer {
+          lists(first: 100) {
+            nodes {
+              id
+              name
+              description
+              isPrivate
+              items(first: 1) {
+                totalCount
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const data = await this.graphql<{
+      viewer: {
+        lists: {
+          nodes: Array<{
+            id: string;
+            name: string;
+            description: string | null;
+            isPrivate: boolean;
+            items: { totalCount: number };
+          }>;
+        };
+      };
+    }>(query);
+
+    return data.viewer.lists.nodes.map((list) => ({
+      id: list.id,
+      name: list.name,
+      description: list.description,
+      isPrivate: list.isPrivate,
+      itemCount: list.items.totalCount,
+    }));
+  }
+
+  async getListItems(listId: string): Promise<StarredRepo[]> {
+    const query = `
+      query($listId: ID!, $cursor: String) {
+        node(id: $listId) {
+          ... on UserList {
+            items(first: 100, after: $cursor) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+              nodes {
+                ... on Repository {
+                  id
+                  databaseId
+                  name
+                  nameWithOwner
+                  description
+                  url
+                  homepageUrl
+                  primaryLanguage {
+                    name
+                  }
+                  repositoryTopics(first: 10) {
+                    nodes {
+                      topic {
+                        name
+                      }
+                    }
+                  }
+                  stargazerCount
+                  forkCount
+                  updatedAt
+                  pushedAt
+                  isArchived
+                  isDisabled
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const repos: StarredRepo[] = [];
+    let cursor: string | null = null;
+
+    while (true) {
+      const data = await this.graphql<{
+        node: {
+          items: {
+            pageInfo: { hasNextPage: boolean; endCursor: string };
+            nodes: Array<any>;
+          };
+        };
+      }>(query, { listId, cursor });
+
+      for (const repo of data.node.items.nodes) {
+        if (!repo.nameWithOwner) continue;
+        repos.push({
+          id: repo.databaseId,
+          nodeId: repo.id,
+          name: repo.name,
+          fullName: repo.nameWithOwner,
+          description: repo.description,
+          url: repo.url,
+          homepage: repo.homepageUrl,
+          language: repo.primaryLanguage?.name || null,
+          topics: repo.repositoryTopics.nodes.map((t: any) => t.topic.name),
+          stargazersCount: repo.stargazerCount,
+          forksCount: repo.forkCount,
+          updatedAt: repo.updatedAt,
+          pushedAt: repo.pushedAt,
+          archived: repo.isArchived,
+          disabled: repo.isDisabled,
+        });
+      }
+
+      if (!data.node.items.pageInfo.hasNextPage) break;
+      cursor = data.node.items.pageInfo.endCursor;
+    }
+
+    return repos;
+  }
+
+  async createList(name: string, description?: string, isPrivate = false): Promise<StarList> {
+    const query = `
+      mutation($input: CreateUserListInput!) {
+        createUserList(input: $input) {
+          list {
+            id
+            name
+            description
+            isPrivate
+          }
+        }
+      }
+    `;
+
+    const data = await this.graphql<{
+      createUserList: {
+        list: { id: string; name: string; description: string | null; isPrivate: boolean };
+      };
+    }>(query, {
+      input: { name, description, isPrivate },
+    });
+
+    return {
+      id: data.createUserList.list.id,
+      name: data.createUserList.list.name,
+      description: data.createUserList.list.description,
+      isPrivate: data.createUserList.list.isPrivate,
+      itemCount: 0,
+    };
+  }
+
+  async deleteList(listId: string): Promise<void> {
+    const query = `
+      mutation($listId: ID!) {
+        deleteUserList(input: { listId: $listId }) {
+          clientMutationId
+        }
+      }
+    `;
+
+    await this.graphql(query, { listId });
+  }
+
+  async addRepoToList(listId: string, repoId: string): Promise<void> {
+    const query = `
+      mutation($listId: ID!, $repositoryId: ID!) {
+        addUserListItems(input: { listId: $listId, itemIds: [$repositoryId] }) {
+          clientMutationId
+        }
+      }
+    `;
+
+    await this.graphql(query, { listId, repositoryId: repoId });
+  }
+
+  async removeRepoFromList(listId: string, repoId: string): Promise<void> {
+    const query = `
+      mutation($listId: ID!, $repositoryId: ID!) {
+        removeUserListItems(input: { listId: $listId, itemIds: [$repositoryId] }) {
+          clientMutationId
+        }
+      }
+    `;
+
+    await this.graphql(query, { listId, repositoryId: repoId });
+  }
+
+  async getRepoByName(fullName: string): Promise<StarredRepo | null> {
+    const [owner, name] = fullName.split("/");
+    try {
+      const { data } = await this.octokit.repos.get({ owner, repo: name });
+      return {
+        id: data.id,
+        nodeId: data.node_id,
+        name: data.name,
+        fullName: data.full_name,
+        description: data.description,
+        url: data.html_url,
+        homepage: data.homepage,
+        language: data.language,
+        topics: data.topics || [],
+        stargazersCount: data.stargazers_count,
+        forksCount: data.forks_count,
+        updatedAt: data.updated_at || "",
+        pushedAt: data.pushed_at || "",
+        archived: data.archived,
+        disabled: data.disabled,
+      };
+    } catch {
+      return null;
+    }
+  }
+}

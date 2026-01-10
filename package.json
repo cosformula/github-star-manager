@@ -1,0 +1,16 @@
+{
+  "name": "github-star-manager",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@octokit/rest": "^22.0.1",
+    "prompts": "^2.4.2"
+  }
+}
