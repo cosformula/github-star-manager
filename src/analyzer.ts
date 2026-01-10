@@ -531,12 +531,15 @@ Return JSON array:
 
   /**
    * Call LLM and parse JSON response with retry logic
+   * Automatically falls back to non-JSON mode if the model doesn't support it
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async callLLMForJSON(prompt: string, model: string, maxRetries = 3): Promise<any> {
+    let useJsonMode = true;
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const response = await this.callLLM(prompt, model, true);
+        const response = await this.callLLM(prompt, model, useJsonMode);
         const parsed = this.parseJSON(response);
         if (parsed !== null) {
           return parsed;
@@ -546,6 +549,14 @@ Return JSON array:
           console.error(`   ⚠️ JSON parse failed, retrying (${attempt}/${maxRetries})...`);
         }
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        // If JSON mode is not supported, disable it and retry
+        if (useJsonMode && (errorMsg.includes("response_format") || errorMsg.includes("json"))) {
+          console.error(`   ⚠️ JSON mode not supported, falling back to standard mode...`);
+          useJsonMode = false;
+          attempt--; // Don't count this as a retry
+          continue;
+        }
         if (attempt >= maxRetries) {
           throw error;
         }
