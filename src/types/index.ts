@@ -56,27 +56,27 @@ export interface AnalysisResult {
   archivedRepos: StarredRepo[];
 }
 
-// 预设的清理条件
+// Preset cleanup criteria
 export type UnstarCriteriaId =
-  | "archived"      // 已归档
-  | "stale"         // 长期未更新
-  | "low_stars"     // 低星数
-  | "deprecated"    // 已废弃/有替代品
-  | "personal_fork" // 个人 fork
-  | "joke_meme";    // 玩笑/meme 仓库
+  | "archived"      // Archived repos
+  | "stale"         // Not updated for long time
+  | "low_stars"     // Low star count
+  | "deprecated"    // Deprecated or has replacement
+  | "personal_fork" // Personal forks
+  | "joke_meme";    // Joke/meme repos
 
 export interface UnstarCriteria {
   id: UnstarCriteriaId;
   label: string;
   description: string;
   default: boolean;
-  // 可选参数，如 stale 的年数、low_stars 的阈值
+  // Optional params, e.g., years for stale, threshold for low_stars
   params?: Record<string, number>;
 }
 
 export interface UnstarOptions {
   criteria: UnstarCriteriaId[];
-  customCriteria?: string;  // 用户自定义条件
-  staleYears?: number;      // stale 条件的年数，默认 2
-  lowStarsThreshold?: number; // low_stars 条件的阈值，默认 100
+  customCriteria?: string;    // User-defined criteria
+  staleYears?: number;        // Years for stale condition, default 2
+  lowStarsThreshold?: number; // Threshold for low_stars condition, default 100
 }

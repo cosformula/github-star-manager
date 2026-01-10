@@ -36,11 +36,11 @@ export class BackupManager {
     const user = await this.github.getAuthenticatedUser();
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
-    // 使用预获取的 list 内容，或者重新获取
+    // Use pre-fetched list contents, or fetch again if not available
     let listsWithRepos: { id: string; name: string; description: string | null; repos: string[] }[];
 
     if (listContents && listContents.size > 0) {
-      // 使用缓存的数据
+      // Use cached data
       listsWithRepos = lists.map((list) => ({
         id: list.id,
         name: list.name,
@@ -48,7 +48,7 @@ export class BackupManager {
         repos: (listContents.get(list.name) || []).map((r) => r.fullName),
       }));
     } else {
-      // 兜底：重新获取
+      // Fallback: fetch again
       listsWithRepos = await Promise.all(
         lists.map(async (list) => {
           const items = await this.github.getListItems(list.id);
@@ -115,11 +115,18 @@ export class BackupManager {
     const toStar = backup.stars.filter((s) => !currentStarNames.has(s.fullName));
     for (const repo of toStar) {
       try {
-        const [owner, name] = repo.fullName.split("/");
+        const parts = repo.fullName.split("/");
+        const owner = parts[0];
+        const name = parts[1];
+        if (!owner || !name) {
+          result.failed++;
+          continue;
+        }
         await this.github.starRepo(owner, name);
         result.success++;
         onProgress?.(`Starred: ${repo.fullName}`);
-      } catch {
+      } catch (error) {
+        console.error(`Failed to star ${repo.fullName}:`, error);
         result.failed++;
       }
     }
@@ -139,7 +146,8 @@ export class BackupManager {
           listIdMap.set(list.name, created.id);
           result.success++;
           onProgress?.(`Created list: ${list.name}`);
-        } catch {
+        } catch (error) {
+          console.error(`Failed to create list ${list.name}:`, error);
           result.failed++;
         }
       }
@@ -161,7 +169,8 @@ export class BackupManager {
               await this.github.addRepoToList(listId, repo.nodeId);
               result.success++;
             }
-          } catch {
+          } catch (error) {
+            console.error(`Failed to add ${repoName} to list ${list.name}:`, error);
             result.failed++;
           }
         }

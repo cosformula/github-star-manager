@@ -36,9 +36,3 @@ export class Spinner {
     }
   }
 }
-
-export function withSpinner<T>(message: string, fn: () => Promise<T>): Promise<T> {
-  const spinner = new Spinner(message);
-  spinner.start();
-  return fn().finally(() => spinner.stop());
-}

@@ -2,15 +2,15 @@ import type { StarredRepo, StarList, ListSuggestion, RepoSuggestion, AnalysisRes
 import { Spinner } from "./spinner";
 
 export interface ModelConfig {
-  // 分类建议 - 需要创意，用更聪明的模型
+  // Categorization suggestions - needs creativity, use smarter model
   categorization: string;
-  // Unstar 分析 - 简单判断，用便宜的模型
+  // Unstar analysis - simple judgment, use cheaper model
   analysis: string;
 }
 
 const DEFAULT_MODELS: ModelConfig = {
-  categorization: "xiaomi/mimo-v2-flash:free", // 免费模型
-  analysis: "xiaomi/mimo-v2-flash:free",       // 免费模型
+  categorization: "xiaomi/mimo-v2-flash:free", // Free model
+  analysis: "xiaomi/mimo-v2-flash:free",       // Free model
 };
 
 export class RepoAnalyzer {
@@ -20,7 +20,7 @@ export class RepoAnalyzer {
   private debugMode = false;
   private maxBatches = Infinity;
 
-  // Token 统计
+  // Token tracking
   private totalTokens = { prompt: 0, completion: 0, total: 0 };
   private callCount = 0;
 
@@ -34,7 +34,7 @@ export class RepoAnalyzer {
     this.maxBatches = maxBatches;
   }
 
-  getTokenStats() {
+  getTokenStats(): { prompt: number; completion: number; total: number; calls: number } {
     return { ...this.totalTokens, calls: this.callCount };
   }
 
@@ -47,9 +47,9 @@ export class RepoAnalyzer {
     existingLists: StarList[],
     options: { shouldReorganize?: boolean; useExistingListsOnly?: boolean } = {}
   ): Promise<ListSuggestion[]> {
-    // 只用现有 lists，不建议新的
+    // Use only existing lists, don't suggest new ones
     if (options.useExistingListsOnly && existingLists.length > 0) {
-      console.log(`   使用现有 ${existingLists.length} 个 lists 进行分类\n`);
+      console.log(`   Using existing ${existingLists.length} lists for categorization\n`);
       return existingLists.map((l) => ({
         name: l.name,
         description: l.description || "",
@@ -58,11 +58,11 @@ export class RepoAnalyzer {
     }
 
     const tokensBefore = this.totalTokens.total;
-    const spinner = new Spinner("AI 正在生成分类建议");
+    const spinner = new Spinner("AI generating category suggestions");
     spinner.start();
     const suggestedLists = await this.suggestLists(repos, existingLists, options.shouldReorganize);
     const tokensUsed = this.totalTokens.total - tokensBefore;
-    spinner.stop(`分类建议完成 (${suggestedLists.length} 个列表) [${tokensUsed.toLocaleString()} tokens]`);
+    spinner.stop(`Category suggestions complete (${suggestedLists.length} lists) [${tokensUsed.toLocaleString()} tokens]`);
 
     return suggestedLists;
   }
@@ -109,47 +109,6 @@ export class RepoAnalyzer {
   }
 
   /**
-   * Legacy method for backwards compatibility
-   * @deprecated Use generateListSuggestions() + categorizeRepos() instead
-   */
-  async analyze(
-    repos: StarredRepo[],
-    existingLists: StarList[],
-    options: { shouldReorganize?: boolean; unstarOnly?: boolean; useExistingListsOnly?: boolean } = {}
-  ): Promise<AnalysisResult> {
-    const { staleRepos, archivedRepos } = this.getRepoStats(repos);
-
-    // 如果只需要 unstar 分析，跳过分类
-    if (options.unstarOnly) {
-      const spinner = new Spinner("AI 正在分析 unstar 建议");
-      spinner.start();
-      // Legacy: 使用默认的清理条件
-      const defaultUnstarOptions: UnstarOptions = {
-        criteria: ["deprecated", "joke_meme", "personal_fork"],
-      };
-      const repoSuggestions = await this.analyzeForUnstar(repos, defaultUnstarOptions, (progress) => {
-        spinner.update(`AI 正在分析 (${progress}/${repos.length})`);
-      });
-      spinner.stop(`分析完成 (${repoSuggestions.filter((s) => s.action === "unstar").length} 个 unstar 建议)`);
-
-      return { suggestedLists: [], repoSuggestions, staleRepos, archivedRepos };
-    }
-
-    // Stage 1: List suggestions
-    const suggestedLists = await this.generateListSuggestions(repos, existingLists, options);
-
-    // Stage 2: Categorize repos (legacy method doesn't have existing repo lists info)
-    const spinner = new Spinner("AI 正在分类每个 repo");
-    spinner.start();
-    const repoSuggestions = await this.categorizeRepos(repos, suggestedLists, new Map(), (progress, total, tokens, eta) => {
-      spinner.update(`AI 正在分类 (${progress}/${total}) [${tokens.toLocaleString()} tokens] ETA: ${eta}`);
-    });
-    spinner.stop(`分类完成 (${repoSuggestions.length} 个建议)`);
-
-    return { suggestedLists, repoSuggestions, staleRepos, archivedRepos };
-  }
-
-  /**
    * Analyze repos for unstar suggestions only (independent of categorization)
    */
   async analyzeForUnstar(
@@ -171,7 +130,7 @@ export class RepoAnalyzer {
         }
       }
 
-      // 剩余的标记为 keep
+      // Mark remaining repos as keep
       for (const repo of batch) {
         if (!batchResults.find((r) => r.repo === repo.fullName)) {
           results.push({ repo, action: "keep", reason: "No issues found" });
@@ -185,7 +144,7 @@ export class RepoAnalyzer {
   }
 
   /**
-   * 根据用户选择的条件构建 unstar 的 prompt
+   * Build unstar criteria prompt based on user-selected options
    */
   private buildUnstarCriteriaPrompt(options: UnstarOptions): { include: string; exclude: string } {
     const staleYears = options.staleYears ?? 2;
@@ -204,7 +163,7 @@ export class RepoAnalyzer {
       .map((id) => `- ${criteriaDescriptions[id]}`)
       .join("\n");
 
-    // 构建排除条件（用户未选择的条件中，一些需要特别保留的）
+    // Build exclusion criteria (some conditions not selected by user that should be preserved)
     const excludeItems: string[] = [];
     if (!options.criteria.includes("archived")) {
       excludeItems.push("- Archived but still useful repos (reference, learning)");
@@ -215,7 +174,7 @@ export class RepoAnalyzer {
     if (!options.criteria.includes("low_stars")) {
       excludeItems.push("- Low star count but useful niche tools");
     }
-    // 始终保留的
+    // Always preserve
     excludeItems.push("- Active learning resources");
     excludeItems.push("- Repos with high personal value (tools you actually use)");
 
@@ -264,7 +223,7 @@ If none should be unstarred: { "unstar": [] }`;
     const languages = this.countBy(repos, (r) => r.language || "Unknown");
     const topics = this.countTopics(repos);
 
-    // 分层抽样：从不同语言中抽取样本，确保多样性
+    // Stratified sampling: sample from different languages to ensure diversity
     const sampleRepos = this.stratifiedSample(repos, 60);
 
     const existingListsInfo = existingLists.length > 0
@@ -310,7 +269,7 @@ Return JSON only:
 
     if (!parsed?.lists) return [];
 
-    return parsed.lists.map((list: any) => ({
+    return parsed.lists.map((list: { name: string; description: string; keywords?: string[] }) => ({
       name: list.name,
       description: list.description,
       matchingRepos: this.matchReposToList(repos, list.keywords || []),
@@ -325,7 +284,7 @@ Return JSON only:
   ): Promise<RepoSuggestion[]> {
     const listNames = suggestedLists.map((l) => l.name);
 
-    // 用 LLM 批量分析：同时判断 unstar 和分类
+    // Batch analyze with LLM: determine unstar and categorization simultaneously
     const batchResults = await this.classifyReposBatch(repos, listNames, existingRepoLists, onProgress);
 
     const suggestions: RepoSuggestion[] = [];
@@ -358,15 +317,18 @@ Return JSON only:
     onProgress?: (processed: number) => void
   ): Promise<Array<{ repo: string; action: "unstar" | "categorize" | "keep"; list?: string; reason: string }>> {
     const results: Array<{ repo: string; action: "unstar" | "categorize" | "keep"; list?: string; reason: string }> = [];
-    const batchSize = 30; // 每批少一点，因为现在要同时分类
+    const batchSize = 30; // Smaller batch size since we're doing both classification and unstar
 
     let batchCount = 0;
     for (let i = 0; i < repos.length; i += batchSize) {
-      // Debug 模式下限制 batch 数量
+      // Limit batch count in debug mode
       if (this.debugMode && batchCount >= this.maxBatches) {
-        // 剩余的标记为 keep
+        // Mark remaining as keep
         for (let j = i; j < repos.length; j++) {
-          results.push({ repo: repos[j].fullName, action: "keep", reason: "[debug] skipped" });
+          const repo = repos[j];
+          if (repo) {
+            results.push({ repo: repo.fullName, action: "keep", reason: "[debug] skipped" });
+          }
         }
         onProgress?.(repos.length);
         break;
@@ -387,10 +349,10 @@ Return JSON only:
     listNames: string[],
     existingRepoLists: Map<string, string[]>
   ): Promise<Array<{ repo: string; action: "unstar" | "categorize" | "keep"; list?: string; reason: string }>> {
-    // 使用编号而不是名字，更稳定
+    // Use numbers instead of names for more stable parsing
     const numberedLists = listNames.map((name, i) => `${i + 1}. ${name}`).join("\n");
 
-    // 为每个 repo 添加已在哪些 lists 中的信息
+    // Add info about which lists each repo is already in
     const repoLines = repos.map((r) => {
       const age = this.getAge(r.pushedAt);
       const existing = existingRepoLists.get(r.fullName);
@@ -423,7 +385,7 @@ Return JSON array:
     const response = await this.callLLM(prompt, this.models.analysis);
     const parsed = this.parseJSON(response);
 
-    // 支持两种格式: { repos: [...] } 或直接 [...]
+    // Support both formats: { repos: [...] } or direct [...]
     const repoResults = Array.isArray(parsed) ? parsed : parsed?.repos;
 
     if (!repoResults || !Array.isArray(repoResults)) {
@@ -432,13 +394,20 @@ Return JSON array:
       return repos.map((r) => ({ repo: r.fullName, action: "keep" as const, reason: "Parse error" }));
     }
 
-    return repoResults.map((r: any) => {
+    interface ClassifyResult {
+      repo: string;
+      action: "unstar" | "categorize" | "keep";
+      list?: number | string;
+      reason?: string;
+    }
+
+    return repoResults.map((r: ClassifyResult) => {
       if (r.action === "categorize") {
-        const listIndex = typeof r.list === "number" ? r.list - 1 : parseInt(r.list) - 1;
+        const listIndex = typeof r.list === "number" ? r.list - 1 : parseInt(String(r.list)) - 1;
         if (listIndex >= 0 && listIndex < listNames.length) {
           return { repo: r.repo, action: "categorize" as const, list: listNames[listIndex], reason: r.reason || "" };
         } else {
-          // 无效的 list 编号
+          // Invalid list index
           return { repo: r.repo, action: "keep" as const, reason: `Invalid list index: ${r.list}` };
         }
       }
@@ -465,7 +434,7 @@ Return JSON array:
       .map((r) => r.fullName);
   }
 
-  // 分层抽样：按语言分组，每组抽取一定数量，确保多样性
+  // Stratified sampling: group by language, sample from each group to ensure diversity
   private stratifiedSample(repos: StarredRepo[], totalSamples: number): StarredRepo[] {
     const byLanguage: Record<string, StarredRepo[]> = {};
 
@@ -474,26 +443,26 @@ Return JSON array:
       (byLanguage[lang] ||= []).push(repo);
     }
 
-    // 按语言数量排序
+    // Sort by language count
     const sortedLangs = Object.entries(byLanguage)
       .sort(([, a], [, b]) => b.length - a.length);
 
     const samples: StarredRepo[] = [];
     const langCount = sortedLangs.length;
 
-    // 每种语言至少抽1个，剩余按比例分配
+    // At least 1 per language, distribute remaining proportionally
     const minPerLang = 1;
     const remaining = totalSamples - Math.min(langCount, totalSamples);
 
-    for (const [lang, langRepos] of sortedLangs) {
+    for (const [, langRepos] of sortedLangs) {
       if (samples.length >= totalSamples) break;
 
-      // 按比例计算该语言应抽取的数量
+      // Calculate sample count proportionally
       const proportion = langRepos.length / repos.length;
       const count = Math.max(minPerLang, Math.round(proportion * remaining));
       const toTake = Math.min(count, langRepos.length, totalSamples - samples.length);
 
-      // 随机抽取
+      // Random sampling
       const shuffled = [...langRepos].sort(() => Math.random() - 0.5);
       samples.push(...shuffled.slice(0, toTake));
     }
@@ -540,9 +509,12 @@ Return JSON array:
       throw new Error(`OpenRouter API error: ${error}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as {
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+      choices?: Array<{ message?: { content?: string } }>;
+    };
 
-    // 统计 tokens
+    // Track token usage
     if (data.usage) {
       const usage = data.usage;
       this.totalTokens.prompt += usage.prompt_tokens || 0;
@@ -554,17 +526,19 @@ Return JSON array:
     return data.choices?.[0]?.message?.content || "";
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private parseJSON(text: string): any {
     try {
-      // 先尝试匹配数组格式 [...]
+      // Try matching array format [...] first
       const arrayMatch = text.match(/\[[\s\S]*\]/);
       if (arrayMatch) {
         return JSON.parse(arrayMatch[0]);
       }
-      // 再尝试匹配对象格式 {...}
+      // Then try matching object format {...}
       const objectMatch = text.match(/\{[\s\S]*\}/);
       return objectMatch ? JSON.parse(objectMatch[0]) : null;
-    } catch {
+    } catch (error) {
+      console.error("Failed to parse JSON:", error);
       return null;
     }
   }

@@ -1,6 +1,85 @@
 import { Octokit } from "@octokit/rest";
 import type { StarredRepo, StarList } from "../types";
 
+// GitHub API response types
+interface GitHubRepoData {
+  id: number;
+  node_id: string;
+  name: string;
+  full_name: string;
+  description: string | null;
+  html_url: string;
+  homepage: string | null;
+  language: string | null;
+  topics?: string[];
+  stargazers_count: number;
+  forks_count: number;
+  updated_at: string | null;
+  pushed_at: string | null;
+  archived: boolean;
+  disabled: boolean;
+}
+
+interface GraphQLRepoData {
+  id: string;
+  databaseId: number;
+  name: string;
+  nameWithOwner: string;
+  description: string | null;
+  url: string;
+  homepageUrl: string | null;
+  primaryLanguage: { name: string } | null;
+  repositoryTopics: { nodes: Array<{ topic: { name: string } }> };
+  stargazerCount: number;
+  forkCount: number;
+  updatedAt: string;
+  pushedAt: string;
+  isArchived: boolean;
+  isDisabled: boolean;
+}
+
+// Helper function to convert REST API repo data to StarredRepo
+function toStarredRepo(data: GitHubRepoData): StarredRepo {
+  return {
+    id: data.id,
+    nodeId: data.node_id,
+    name: data.name,
+    fullName: data.full_name,
+    description: data.description,
+    url: data.html_url,
+    homepage: data.homepage,
+    language: data.language,
+    topics: data.topics || [],
+    stargazersCount: data.stargazers_count,
+    forksCount: data.forks_count,
+    updatedAt: data.updated_at || "",
+    pushedAt: data.pushed_at || "",
+    archived: data.archived,
+    disabled: data.disabled,
+  };
+}
+
+// Helper function to convert GraphQL repo data to StarredRepo
+function graphqlToStarredRepo(repo: GraphQLRepoData): StarredRepo {
+  return {
+    id: repo.databaseId,
+    nodeId: repo.id,
+    name: repo.name,
+    fullName: repo.nameWithOwner,
+    description: repo.description,
+    url: repo.url,
+    homepage: repo.homepageUrl,
+    language: repo.primaryLanguage?.name || null,
+    topics: repo.repositoryTopics.nodes.map((t) => t.topic.name),
+    stargazersCount: repo.stargazerCount,
+    forksCount: repo.forkCount,
+    updatedAt: repo.updatedAt,
+    pushedAt: repo.pushedAt,
+    archived: repo.isArchived,
+    disabled: repo.isDisabled,
+  };
+}
+
 export class GitHubClient {
   private octokit: Octokit;
   private token: string;
@@ -13,7 +92,7 @@ export class GitHubClient {
   async getStarredRepos(onProgress?: (count: number, total: number) => void, maxCount?: number): Promise<StarredRepo[]> {
     const perPage = 100;
 
-    // Step 1: 获取第一页，解析 Link header 得到总页数
+    // Step 1: Get first page and parse Link header for total pages
     const firstResponse = await this.octokit.activity.listReposStarredByAuthenticatedUser({
       per_page: perPage,
       page: 1,
@@ -23,22 +102,22 @@ export class GitHubClient {
 
     if (firstResponse.data.length === 0) return [];
 
-    // 解析 Link header 获取最后一页
+    // Parse Link header to get last page
     const linkHeader = firstResponse.headers.link || "";
     const lastPageMatch = linkHeader.match(/[?&]page=(\d+)[^>]*>;\s*rel="last"/);
-    const totalPages = lastPageMatch ? parseInt(lastPageMatch[1], 10) : 1;
+    const totalPages = lastPageMatch?.[1] ? parseInt(lastPageMatch[1], 10) : 1;
     const estimatedTotal = maxCount ? Math.min(totalPages * perPage, maxCount) : totalPages * perPage;
 
-    // 计算需要获取的页数
+    // Calculate pages to fetch
     const maxPages = maxCount ? Math.ceil(maxCount / perPage) : totalPages;
     const pagesToFetch = Math.min(totalPages, maxPages);
 
-    // 报告第一页进度
+    // Report first page progress
     onProgress?.(firstResponse.data.length, estimatedTotal);
 
-    // Step 2: 并行获取剩余页面
+    // Step 2: Fetch remaining pages concurrently
     const CONCURRENCY = 3;
-    const allResponses: any[][] = [firstResponse.data];
+    const allResponses: Array<typeof firstResponse.data> = [firstResponse.data];
 
     for (let i = 2; i <= pagesToFetch; i += CONCURRENCY) {
       const batch = [];
@@ -59,28 +138,12 @@ export class GitHubClient {
       onProgress?.(allResponses.flat().length, estimatedTotal);
     }
 
-    // Step 3: 转换数据
+    // Step 3: Transform data
     const repos: StarredRepo[] = [];
     for (const data of allResponses) {
       for (const repo of data) {
-        const repoData = "repo" in repo ? repo.repo : repo;
-        repos.push({
-          id: repoData.id,
-          nodeId: repoData.node_id,
-          name: repoData.name,
-          fullName: repoData.full_name,
-          description: repoData.description,
-          url: repoData.html_url,
-          homepage: repoData.homepage,
-          language: repoData.language,
-          topics: repoData.topics || [],
-          stargazersCount: repoData.stargazers_count,
-          forksCount: repoData.forks_count,
-          updatedAt: repoData.updated_at || "",
-          pushedAt: repoData.pushed_at || "",
-          archived: repoData.archived,
-          disabled: repoData.disabled,
-        });
+        const repoData = ("repo" in repo ? repo.repo : repo) as GitHubRepoData;
+        repos.push(toStarredRepo(repoData));
 
         if (maxCount && repos.length >= maxCount) {
           return repos;
@@ -115,7 +178,7 @@ export class GitHubClient {
   }
 
   // GraphQL helper for Lists API (with retry)
-  private async graphql<T>(query: string, variables?: Record<string, any>): Promise<T> {
+  private async graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
     const maxRetries = 3;
     let lastError: Error | null = null;
 
@@ -130,22 +193,22 @@ export class GitHubClient {
           body: JSON.stringify({ query, variables }),
         });
 
-        const json = await response.json();
+        const json = await response.json() as { data?: T; errors?: Array<{ message: string }> };
         if (json.errors) {
-          const errorMsg = json.errors.map((e: any) => e.message).join(", ");
-          // 如果是服务端错误，进行重试
+          const errorMsg = json.errors.map((e) => e.message).join(", ");
+          // Retry on server errors
           if (errorMsg.includes("Something went wrong") || response.status >= 500) {
             throw new Error(errorMsg);
           }
-          // 其他错误直接抛出
+          // Throw immediately on other errors
           throw new Error(errorMsg);
         }
-        return json.data;
+        return json.data as T;
       } catch (error) {
         lastError = error as Error;
         if (attempt < maxRetries) {
           const delay = attempt * 2000; // 2s, 4s, 6s
-          console.error(`   ⚠️ GitHub API 错误，${delay/1000}s 后重试 (${attempt}/${maxRetries})...`);
+          console.error(`   ⚠️ GitHub API error, retrying in ${delay/1000}s (${attempt}/${maxRetries})...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
@@ -239,42 +302,28 @@ export class GitHubClient {
       }
     `;
 
+    interface ListItemsResponse {
+      node: {
+        items: {
+          pageInfo: { hasNextPage: boolean; endCursor: string };
+          nodes: Array<GraphQLRepoData>;
+        };
+      };
+    }
+
     const repos: StarredRepo[] = [];
     let cursor: string | null = null;
 
     while (true) {
-      const data = await this.graphql<{
-        node: {
-          items: {
-            pageInfo: { hasNextPage: boolean; endCursor: string };
-            nodes: Array<any>;
-          };
-        };
-      }>(query, { listId, cursor });
+      const response: ListItemsResponse = await this.graphql<ListItemsResponse>(query, { listId, cursor });
 
-      for (const repo of data.node.items.nodes) {
+      for (const repo of response.node.items.nodes) {
         if (!repo.nameWithOwner) continue;
-        repos.push({
-          id: repo.databaseId,
-          nodeId: repo.id,
-          name: repo.name,
-          fullName: repo.nameWithOwner,
-          description: repo.description,
-          url: repo.url,
-          homepage: repo.homepageUrl,
-          language: repo.primaryLanguage?.name || null,
-          topics: repo.repositoryTopics.nodes.map((t: any) => t.topic.name),
-          stargazersCount: repo.stargazerCount,
-          forksCount: repo.forkCount,
-          updatedAt: repo.updatedAt,
-          pushedAt: repo.pushedAt,
-          archived: repo.isArchived,
-          disabled: repo.isDisabled,
-        });
+        repos.push(graphqlToStarredRepo(repo));
       }
 
-      if (!data.node.items.pageInfo.hasNextPage) break;
-      cursor = data.node.items.pageInfo.endCursor;
+      if (!response.node.items.pageInfo.hasNextPage) break;
+      cursor = response.node.items.pageInfo.endCursor;
     }
 
     return repos;
@@ -336,7 +385,7 @@ export class GitHubClient {
       }
     `;
 
-    // 获取当前 repo 所属的 lists，然后添加新的 listId
+    // Get current lists for the repo, then add the new listId
     const currentLists = await this.getRepoLists(repoId);
     const newListIds = [...new Set([...currentLists, listId])];
 
@@ -363,7 +412,8 @@ export class GitHubClient {
         node: { viewerUserListsConnection?: { nodes: { id: string }[] } };
       }>(query, { id: repoId });
       return data.node.viewerUserListsConnection?.nodes.map((n) => n.id) || [];
-    } catch {
+    } catch (error) {
+      console.error(`Failed to get lists for repo ${repoId}:`, error);
       return [];
     }
   }
@@ -381,7 +431,7 @@ export class GitHubClient {
       }
     `;
 
-    // 获取当前 repo 所属的 lists，然后移除 listId
+    // Get current lists for the repo, then remove the listId
     const currentLists = await this.getRepoLists(repoId);
     const newListIds = currentLists.filter((id) => id !== listId);
 
@@ -390,26 +440,28 @@ export class GitHubClient {
 
   async getRepoByName(fullName: string): Promise<StarredRepo | null> {
     const [owner, name] = fullName.split("/");
+    if (!owner || !name) return null;
     try {
       const { data } = await this.octokit.repos.get({ owner, repo: name });
-      return {
+      return toStarredRepo({
         id: data.id,
-        nodeId: data.node_id,
+        node_id: data.node_id,
         name: data.name,
-        fullName: data.full_name,
+        full_name: data.full_name,
         description: data.description,
-        url: data.html_url,
-        homepage: data.homepage,
-        language: data.language,
-        topics: data.topics || [],
-        stargazersCount: data.stargazers_count,
-        forksCount: data.forks_count,
-        updatedAt: data.updated_at || "",
-        pushedAt: data.pushed_at || "",
+        html_url: data.html_url,
+        homepage: data.homepage ?? null,
+        language: data.language ?? null,
+        topics: data.topics,
+        stargazers_count: data.stargazers_count,
+        forks_count: data.forks_count,
+        updated_at: data.updated_at ?? null,
+        pushed_at: data.pushed_at ?? null,
         archived: data.archived,
         disabled: data.disabled,
-      };
-    } catch {
+      });
+    } catch (error) {
+      console.error(`Failed to get repo ${fullName}:`, error);
       return null;
     }
   }

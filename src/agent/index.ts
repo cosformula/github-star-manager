@@ -340,7 +340,7 @@ export class StarManagerAgent {
 
       // 获取 list 内容 (并行，用于备份和分类)
       if (this.lists.length > 0) {
-        const spinnerListContents = new Spinner("获取 List 内容");
+        const spinnerListContents = new Spinner(`获取 List 内容 (0/${this.lists.length})`);
         spinnerListContents.start();
         const CONCURRENCY = 3;
         for (let i = 0; i < this.lists.length; i += CONCURRENCY) {
@@ -358,7 +358,8 @@ export class StarManagerAgent {
           for (const { list, repos } of results) {
             this.listContents.set(list.name, repos);
           }
-          spinnerListContents.update(`获取 List 内容 (${Math.min(i + CONCURRENCY, this.lists.length)}/${this.lists.length})`);
+          const completed = Math.min(i + CONCURRENCY, this.lists.length);
+          spinnerListContents.update(`获取 List 内容 (${completed}/${this.lists.length})`);
         }
         const totalReposInLists = Array.from(this.listContents.values()).reduce((sum, repos) => sum + repos.length, 0);
         spinnerListContents.stop(`List 内容: ${totalReposInLists} repos in ${this.lists.length} lists`);
@@ -1256,18 +1257,31 @@ export class StarManagerAgent {
         addSuccess = preparedActions.length;
         process.stdout.write(`   进度: ${addSuccess + addSkipped}/${addActions.length} (✓${addSuccess} ✗0)`);
       } else if (preparedActions.length > 0) {
-        // Step 2: 并行获取所有 repo 信息
-        console.log(`   📥 并行获取 ${preparedActions.length} 个 repo 信息...`);
-        const repoResults = await Promise.all(
-          preparedActions.map(async ({ action, listId }) => {
-            try {
-              const repo = await this.github.getRepoByName(action.params.repo_full_name!);
-              return { action, listId, repo, error: null };
-            } catch (e) {
-              return { action, listId, repo: null, error: e };
-            }
-          })
-        );
+        // Step 2: 分批获取 repo 信息（并发数 5，避免触发 rate limit）
+        console.log(`   📥 分批获取 ${preparedActions.length} 个 repo 信息...`);
+        const FETCH_CONCURRENCY = 5;
+        const repoResults: Array<{ action: PlanAction; listId: string; repo: StarredRepo | null; error: any }> = [];
+
+        for (let i = 0; i < preparedActions.length; i += FETCH_CONCURRENCY) {
+          const batch = preparedActions.slice(i, i + FETCH_CONCURRENCY);
+          const batchResults = await Promise.all(
+            batch.map(async ({ action, listId }) => {
+              try {
+                const repo = await this.github.getRepoByName(action.params.repo_full_name!);
+                return { action, listId, repo, error: null };
+              } catch (e) {
+                return { action, listId, repo: null, error: e };
+              }
+            })
+          );
+          repoResults.push(...batchResults);
+          process.stdout.write(`\r   📥 获取进度: ${repoResults.length}/${preparedActions.length}`);
+          // 批次间延迟
+          if (i + FETCH_CONCURRENCY < preparedActions.length) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        }
+        console.log();
 
         // Step 3: 使用并发池写入（控制并发数为 3，避免触发 rate limit）
         const CONCURRENCY = 3;
@@ -1429,13 +1443,5 @@ export class StarManagerAgent {
 
   private groupActions(actions: PlanAction[]): Record<string, PlanAction[]> {
     return actions.reduce((acc, a) => ((acc[a.type] ||= []).push(a), acc), {} as Record<string, PlanAction[]>);
-  }
-
-  private icon(type: string): string {
-    return { unstar: "⭐", create_list: "📁", add_to_list: "➕" }[type] || "•";
-  }
-
-  private label(type: string): string {
-    return { unstar: "Unstar", create_list: "Create lists", add_to_list: "Add to lists" }[type] || type;
   }
 }
