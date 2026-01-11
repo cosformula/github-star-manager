@@ -32,7 +32,7 @@ bun install
 ## 使用
 
 ```bash
-bun run index.ts
+bun run src/cli.ts
 ```
 
 ### 配置 Tokens
@@ -41,10 +41,10 @@ bun run index.ts
 # 方式一：环境变量（推荐）
 cp .env.example .env
 # 编辑 .env 填入 tokens
-bun run index.ts
+bun run src/cli.ts
 
 # 方式二：运行时输入
-bun run index.ts
+bun run src/cli.ts
 # 按提示输入 tokens
 ```
 
@@ -64,7 +64,7 @@ bun run index.ts
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        index.ts                             │
+│                       src/cli.ts                            │
 │                           ↓                                 │
 │                   StarManagerAgent                          │
 │                    (主调度器)                                │
@@ -333,8 +333,8 @@ bun run index.ts
 
 ```
 github-star-manager/
-├── index.ts              # 入口文件
 ├── src/
+│   ├── cli.ts            # 入口文件
 │   ├── agent/index.ts    # 主调度器 StarManagerAgent
 │   ├── github/client.ts  # GitHub API 封装
 │   ├── analyzer.ts       # AI 分析引擎

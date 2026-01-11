@@ -32,7 +32,7 @@ bun install
 ## Usage
 
 ```bash
-bun run index.ts
+bun run src/cli.ts
 ```
 
 ### Token Configuration
@@ -41,10 +41,10 @@ bun run index.ts
 # Option 1: Environment variables (recommended)
 cp .env.example .env
 # Edit .env and fill in your tokens
-bun run index.ts
+bun run src/cli.ts
 
 # Option 2: Runtime input
-bun run index.ts
+bun run src/cli.ts
 # Enter tokens when prompted
 ```
 
@@ -64,7 +64,7 @@ Select from these modes at startup:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        index.ts                             │
+│                       src/cli.ts                            │
 │                           ↓                                 │
 │                   StarManagerAgent                          │
 │                   (Main Orchestrator)                       │
@@ -333,8 +333,8 @@ Only suggests unstar for:
 
 ```
 github-star-manager/
-├── index.ts              # Entry point
 ├── src/
+│   ├── cli.ts            # Entry point
 │   ├── agent/index.ts    # Main orchestrator StarManagerAgent
 │   ├── github/client.ts  # GitHub API wrapper
 │   ├── analyzer.ts       # AI analysis engine
