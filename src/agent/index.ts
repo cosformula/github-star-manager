@@ -887,8 +887,19 @@ export class StarManagerAgent {
     const toUnstar = unstarResults.filter((s) => s.action === "unstar");
     this.repoSuggestions.push(...toUnstar);
 
-    console.log(`\n🎯 Cleanup Results:`);
-    console.log(`   🗑️  Suggested unstar: ${toUnstar.length} repos`);
+    console.log(`\n🎯 Cleanup Results (analyzed ${this.stars.length} repos):`);
+    if (toUnstar.length === 0) {
+      console.log(`   ✅ No repos match the cleanup criteria - your stars are clean!`);
+    } else {
+      console.log(`   🗑️  Suggested unstar: ${toUnstar.length} repos`);
+      // Show first few suggestions
+      for (const suggestion of toUnstar.slice(0, 5)) {
+        console.log(`      • ${suggestion.repo.fullName}: ${suggestion.reason}`);
+      }
+      if (toUnstar.length > 5) {
+        console.log(`      ... and ${toUnstar.length - 5} more`);
+      }
+    }
 
     // Show token stats
     const stats = this.analyzer.getTokenStats();
