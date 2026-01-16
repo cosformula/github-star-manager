@@ -1,6 +1,6 @@
 {
   "name": "github-star-manager",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AI-powered GitHub stars organizer - categorize repos into lists and clean up stale stars",
   "author": "cosformula",
   "license": "MIT",
