@@ -275,6 +275,9 @@ export class StarManagerAgent {
     console.log("API tokens required (or set GITHUB_TOKEN & OPENROUTER_API_KEY).\n");
 
     if (!github) {
+      console.log("📌 GitHub Token (Classic recommended for Lists feature):");
+      console.log("   https://github.com/settings/tokens");
+      console.log("   Required scopes: public_repo, read:user, user\n");
       const res = await prompts({
         type: "password",
         name: "github",
@@ -288,6 +291,8 @@ export class StarManagerAgent {
     }
 
     if (!openrouter) {
+      console.log("\n📌 OpenRouter API Key (free models available):");
+      console.log("   https://openrouter.ai/keys\n");
       const res = await prompts({
         type: "password",
         name: "openrouter",
