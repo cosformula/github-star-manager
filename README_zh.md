@@ -1,4 +1,7 @@
-# gh-star
+# github-star-manager
+
+[![npm version](https://img.shields.io/npm/v/github-star-manager.svg)](https://www.npmjs.com/package/github-star-manager)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [English](./README.md) | 中文
 
@@ -6,7 +9,7 @@ AI 驱动的 GitHub Star 命令行管理工具。
 
 ## 概述
 
-gh-star 是一个**命令行 Star 管理 Agent**，利用 LLM 对你的 starred 仓库进行语义分析，理解每个仓库的用途和上下文，自动整理成有意义的分类。
+github-star-manager 是一个**命令行 Star 管理 Agent**，利用 LLM 对你的 starred 仓库进行语义分析，理解每个仓库的用途和上下文，自动整理成有意义的分类。
 
 ## 功能特性
 
@@ -26,25 +29,33 @@ gh-star 是一个**命令行 Star 管理 Agent**，利用 LLM 对你的 starred 
 ## 安装
 
 ```bash
-bun install
+# 全局安装
+npm install -g github-star-manager
+
+# 或直接使用 npx（无需安装）
+npx github-star-manager
 ```
 
 ## 使用
 
 ```bash
-bun run src/cli.ts
+# 全局安装后
+github-star-manager
+
+# 或使用 npx
+npx github-star-manager
 ```
 
 ### 配置 Tokens
 
 ```bash
 # 方式一：环境变量（推荐）
-cp .env.example .env
-# 编辑 .env 填入 tokens
-bun run src/cli.ts
+export GITHUB_TOKEN=your_github_token
+export OPENROUTER_API_KEY=your_openrouter_key
+github-star-manager
 
 # 方式二：运行时输入
-bun run src/cli.ts
+github-star-manager
 # 按提示输入 tokens
 ```
 

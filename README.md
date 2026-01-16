@@ -1,4 +1,7 @@
-# gh-star
+# github-star-manager
+
+[![npm version](https://img.shields.io/npm/v/github-star-manager.svg)](https://www.npmjs.com/package/github-star-manager)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 English | [中文](./README_zh.md)
 
@@ -6,7 +9,7 @@ An AI-powered CLI agent for managing your GitHub Stars.
 
 ## Overview
 
-gh-star is a **command-line star management agent** that leverages LLM to semantically understand your starred repositories. It analyzes the purpose and context of each repo, then organizes them into meaningful categories.
+github-star-manager is a **command-line star management agent** that leverages LLM to semantically understand your starred repositories. It analyzes the purpose and context of each repo, then organizes them into meaningful categories.
 
 ## Features
 
@@ -26,25 +29,33 @@ gh-star is a **command-line star management agent** that leverages LLM to semant
 ## Installation
 
 ```bash
-bun install
+# Install globally
+npm install -g github-star-manager
+
+# Or use directly with npx (no install needed)
+npx github-star-manager
 ```
 
 ## Usage
 
 ```bash
-bun run src/cli.ts
+# If installed globally
+github-star-manager
+
+# Or with npx
+npx github-star-manager
 ```
 
 ### Token Configuration
 
 ```bash
 # Option 1: Environment variables (recommended)
-cp .env.example .env
-# Edit .env and fill in your tokens
-bun run src/cli.ts
+export GITHUB_TOKEN=your_github_token
+export OPENROUTER_API_KEY=your_openrouter_key
+github-star-manager
 
 # Option 2: Runtime input
-bun run src/cli.ts
+github-star-manager
 # Enter tokens when prompted
 ```
 
